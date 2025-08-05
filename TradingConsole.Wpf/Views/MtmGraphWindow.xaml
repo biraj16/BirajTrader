@@ -42,7 +42,7 @@
                 <StackPanel Grid.Column="1" HorizontalAlignment="Center">
                     <TextBlock Text="Min MTM" Foreground="Gray" FontSize="12"/>
                     <TextBlock Text="{Binding MinMtmDataPoint.Pnl, StringFormat=C, ConverterCulture=en-IN}" 
-                               FontSize="16" FontWeight="SemiBold" Foreground="Red"/>
+                               FontSize="16" FontWeight="SemiBold" Foreground="#FFf44336"/>
                     <TextBlock Text="{Binding MinMtmDataPoint.Timestamp, StringFormat='at hh:mm tt'}" 
                                Foreground="Gray" FontSize="11"/>
                 </StackPanel>
@@ -50,7 +50,7 @@
                 <StackPanel Grid.Column="2" HorizontalAlignment="Center">
                     <TextBlock Text="Max MTM" Foreground="Gray" FontSize="12"/>
                     <TextBlock Text="{Binding MaxMtmDataPoint.Pnl, StringFormat=C, ConverterCulture=en-IN}" 
-                               FontSize="16" FontWeight="SemiBold" Foreground="Green"/>
+                               FontSize="16" FontWeight="SemiBold" Foreground="#FF4CAF50"/>
                     <TextBlock Text="{Binding MaxMtmDataPoint.Timestamp, StringFormat='at hh:mm tt'}" 
                                Foreground="Gray" FontSize="11"/>
                 </StackPanel>
@@ -67,7 +67,8 @@
         <!-- Chart Area -->
         <lvc:CartesianChart Grid.Row="1"
                             x:Name="Chart"
-                            LegendPosition="Bottom">
+                            LegendPosition="Bottom"
+                            LegendTextPaint="{Binding #, Converter={StaticResource LvcSolidColorPaintConverter}, ConverterParameter=LightGray}">
         </lvc:CartesianChart>
 
     </Grid>

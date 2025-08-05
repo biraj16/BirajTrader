@@ -12,6 +12,7 @@
             <converters:OiToWidthConverter x:Key="OiToWidthConverter"/>
             <converters:AbsoluteValueConverter x:Key="AbsoluteValueConverter"/>
             <converters:ValueToSignConverter x:Key="ValueToSignConverter"/>
+            <converters:LvcSolidColorPaintConverter x:Key="LvcSolidColorPaintConverter"/>
 
             <!-- Base Styles -->
             <Style TargetType="Button">

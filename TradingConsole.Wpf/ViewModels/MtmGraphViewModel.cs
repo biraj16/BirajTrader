@@ -23,6 +23,7 @@ namespace TradingConsole.Wpf.ViewModels
         public decimal MaxDrawdown { get => _maxDrawdown; set => SetProperty(ref _maxDrawdown, value); }
 
         public ObservableCollection<PnlDataPoint> PnlHistory { get; } = new ObservableCollection<PnlDataPoint>();
+        public ObservableCollection<PnlDataPoint> DrawdownHistory { get; } = new ObservableCollection<PnlDataPoint>();
 
         public MtmGraphViewModel(List<PnlDataPoint> pnlHistory)
         {
@@ -32,25 +33,33 @@ namespace TradingConsole.Wpf.ViewModels
                 return;
             }
 
-            foreach (var point in pnlHistory)
+            var sortedHistory = pnlHistory.OrderBy(p => p.Timestamp).ToList();
+
+            // --- FIX: Calculate summary metrics on the raw, sorted data ---
+            CalculateSummaryMetrics(sortedHistory);
+
+            // --- FIX: Populate the graph history with the raw, sorted data ---
+            foreach (var point in sortedHistory)
             {
                 PnlHistory.Add(point);
             }
 
-            CalculateSummaryMetrics(pnlHistory);
+            // --- FIX: Calculate the drawdown graph based on the raw, sorted data ---
+            CalculateDrawdownGraph(sortedHistory);
         }
 
-        private void CalculateSummaryMetrics(List<PnlDataPoint> pnlHistory)
+        private void CalculateSummaryMetrics(List<PnlDataPoint> rawSortedHistory)
         {
-            TotalMtm = pnlHistory.Last().Pnl;
+            if (!rawSortedHistory.Any()) return;
 
-            MinMtmDataPoint = pnlHistory.OrderBy(p => p.Pnl).First();
-            MaxMtmDataPoint = pnlHistory.OrderBy(p => p.Pnl).Last();
+            TotalMtm = rawSortedHistory.Last().Pnl;
+            MinMtmDataPoint = rawSortedHistory.OrderBy(p => p.Pnl).First();
+            MaxMtmDataPoint = rawSortedHistory.OrderBy(p => p.Pnl).Last();
 
-            decimal maxDrawdown = 0;
+            decimal maxDrawdownValue = 0;
             decimal peakPnl = decimal.MinValue;
 
-            foreach (var pnlPoint in pnlHistory)
+            foreach (var pnlPoint in rawSortedHistory)
             {
                 if (pnlPoint.Pnl > peakPnl)
                 {
@@ -59,13 +68,28 @@ namespace TradingConsole.Wpf.ViewModels
 
                 decimal currentDrawdown = peakPnl - pnlPoint.Pnl;
 
-                if (currentDrawdown > maxDrawdown)
+                if (currentDrawdown > maxDrawdownValue)
                 {
-                    maxDrawdown = currentDrawdown;
+                    maxDrawdownValue = currentDrawdown;
                 }
             }
 
-            MaxDrawdown = maxDrawdown;
+            MaxDrawdown = maxDrawdownValue;
+        }
+
+        private void CalculateDrawdownGraph(List<PnlDataPoint> sortedHistory)
+        {
+            DrawdownHistory.Clear();
+            decimal peakPnl = decimal.MinValue;
+            foreach (var pnlPoint in sortedHistory)
+            {
+                if (pnlPoint.Pnl > peakPnl)
+                {
+                    peakPnl = pnlPoint.Pnl;
+                }
+                decimal currentDrawdown = peakPnl - pnlPoint.Pnl;
+                DrawdownHistory.Add(new PnlDataPoint { Timestamp = pnlPoint.Timestamp, Pnl = -currentDrawdown });
+            }
         }
     }
 }
