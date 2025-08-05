@@ -1,5 +1,4 @@
 ﻿// TradingConsole.Wpf/Services/Analysis/SignalGenerationService.cs
-// --- MODIFIED: Added ATR and OBV signal calculations ---
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -26,7 +25,6 @@ namespace TradingConsole.Wpf.Services
 
         public void GenerateAllSignals(DashboardInstrument instrument, DashboardInstrument instrumentForAnalysis, AnalysisResult result, System.Collections.ObjectModel.ObservableCollection<OptionChainRow> optionChain)
         {
-            // VWAP calculation
             var tickState = _stateManager.TickAnalysisState[instrumentForAnalysis.SecurityId];
             tickState.cumulativePriceVolume += instrumentForAnalysis.AvgTradePrice * instrumentForAnalysis.LastTradedQuantity;
             tickState.cumulativeVolume += instrumentForAnalysis.LastTradedQuantity;
@@ -38,7 +36,6 @@ namespace TradingConsole.Wpf.Services
             result.PriceVsCloseSignal = priceVsClose;
             result.DayRangeSignal = dayRange;
 
-            // Use 3-minute candles for OI analysis
             var threeMinCandles = _stateManager.GetCandles(instrumentForAnalysis.SecurityId, TimeSpan.FromMinutes(3));
             if (threeMinCandles != null && threeMinCandles.Any())
             {
@@ -92,7 +89,6 @@ namespace TradingConsole.Wpf.Services
                 result.RsiSignal5Min = _indicatorService.DetectRsiDivergence(fiveMinCandles, rsiState, _settingsViewModel.RsiDivergenceLookback);
             }
 
-            // --- FIX: Added ATR and OBV calculations ---
             if (oneMinCandles != null && oneMinCandles.Any())
             {
                 var atrState = _stateManager.MultiTimeframeAtrState[instrumentForAnalysis.SecurityId][TimeSpan.FromMinutes(1)];
@@ -111,7 +107,6 @@ namespace TradingConsole.Wpf.Services
                 result.ObvValue5Min = _indicatorService.CalculateObv(fiveMinCandles, obvState);
             }
 
-
             if (oneMinCandles != null) result.CandleSignal1Min = RecognizeCandlestickPattern(oneMinCandles, result);
             if (fiveMinCandles != null)
             {
@@ -128,7 +123,7 @@ namespace TradingConsole.Wpf.Services
                 result.DevelopingVah = liveProfile.DevelopingTpoLevels.ValueAreaHigh;
                 result.DevelopingVal = liveProfile.DevelopingTpoLevels.ValueAreaLow;
                 result.DevelopingVpoc = liveProfile.DevelopingVolumeProfile.VolumePoc;
-                RunMarketProfileAnalysis(instrument, liveProfile, result);
+                RunMarketProfileAnalysis(instrument, liveProfile, result, oneMinCandles);
             }
             var yesterdayProfile = _stateManager.HistoricalMarketProfiles.GetValueOrDefault(instrument.SecurityId)?.FirstOrDefault(p => p.Date.Date < DateTime.Today);
             result.YesterdayProfileSignal = AnalyzePriceRelativeToYesterdayProfile(instrument.LTP, yesterdayProfile);
@@ -141,20 +136,17 @@ namespace TradingConsole.Wpf.Services
 
         private string CalculateGammaSignal(DashboardInstrument instrument, decimal underlyingPrice, System.Collections.ObjectModel.ObservableCollection<OptionChainRow> optionChain)
         {
-            // Only run this analysis for the main indices that have an option chain view
             if (instrument.InstrumentType != "INDEX" || optionChain == null || !optionChain.Any())
             {
                 return "N/A";
             }
 
-            // 1. Find the ATM strike and its index in the sorted list
             var sortedStrikes = optionChain.OrderBy(r => r.StrikePrice).ToList();
             var atmStrike = sortedStrikes.OrderBy(r => Math.Abs(r.StrikePrice - underlyingPrice)).FirstOrDefault();
             if (atmStrike == null) return "N/A";
 
             int atmIndex = sortedStrikes.IndexOf(atmStrike);
 
-            // 2. Select the 4 OTM strikes for calls (higher strikes) and puts (lower strikes)
             const int otmCount = 4;
             var otmCallStrikes = sortedStrikes.Skip(atmIndex + 1).Take(otmCount).ToList();
             var otmPutStrikes = sortedStrikes.Take(atmIndex).Reverse().Take(otmCount).ToList();
@@ -164,30 +156,32 @@ namespace TradingConsole.Wpf.Services
                 return "Insufficient OTM Strikes";
             }
 
-            // 3. Sum the gamma for these strikes
             decimal totalOtmCallGamma = otmCallStrikes.Sum(s => s.CallOption?.Gamma ?? 0);
             decimal totalOtmPutGamma = otmPutStrikes.Sum(s => s.PutOption?.Gamma ?? 0);
 
-            // 4. Compare and generate the signal
+            decimal userRatio = _settingsViewModel.GammaImbalanceRatio;
+            if (userRatio <= 1) userRatio = 3;
+            decimal internalRatio = (userRatio - 1) / (userRatio + 1);
+
             decimal difference = totalOtmCallGamma - totalOtmPutGamma;
             decimal totalGamma = totalOtmCallGamma + totalOtmPutGamma;
-            decimal ratio = totalGamma > 0 ? Math.Abs(difference) / totalGamma : 0;
+            decimal calculatedRatio = totalGamma > 0 ? Math.Abs(difference) / totalGamma : 0;
 
-            if (ratio > 0.5m) // If one side has more than 75% of the total gamma ( (X-Y)/(X+Y) > 0.5 => X > 3Y )
+            if (calculatedRatio > internalRatio)
             {
                 if (totalOtmCallGamma > totalOtmPutGamma)
                 {
-                    return "High OTM Call Gamma"; // Potential for upward gamma squeeze
+                    return "High OTM Call Gamma";
                 }
                 else
                 {
-                    return "High OTM Put Gamma"; // Potential for downward gamma squeeze
+                    return "High OTM Put Gamma";
                 }
             }
 
             if (totalOtmCallGamma > _settingsViewModel.AtmGammaThreshold && totalOtmPutGamma > _settingsViewModel.AtmGammaThreshold)
             {
-                return "Balanced OTM Gamma"; // Both sides have significant gamma
+                return "Balanced OTM Gamma";
             }
 
             return "Neutral";
@@ -222,6 +216,39 @@ namespace TradingConsole.Wpf.Services
         }
 
         #region Signal Calculation Logic
+
+        private void RunMarketProfileAnalysis(DashboardInstrument instrument, MarketProfile currentProfile, AnalysisResult result, List<Candle>? oneMinCandles)
+        {
+            var previousDayProfile = _stateManager.HistoricalMarketProfiles.GetValueOrDefault(instrument.SecurityId)?.FirstOrDefault(p => p.Date.Date < DateTime.Today.Date);
+            if (previousDayProfile == null)
+            {
+                result.MarketProfileSignal = "Awaiting Previous Day Data";
+                return;
+            }
+
+            var ltp = instrument.LTP;
+            var prevVAH = previousDayProfile.TpoLevelsInfo.ValueAreaHigh;
+            var prevVAL = previousDayProfile.TpoLevelsInfo.ValueAreaLow;
+            var currentVAH = currentProfile.DevelopingTpoLevels.ValueAreaHigh;
+            var currentVAL = currentProfile.DevelopingTpoLevels.ValueAreaLow;
+
+            if (currentVAL > prevVAH) { result.MarketProfileSignal = "True Acceptance Above Y-VAH"; return; }
+            if (currentVAH < prevVAL) { result.MarketProfileSignal = "True Acceptance Below Y-VAL"; return; }
+
+            if (oneMinCandles != null && oneMinCandles.Count > 2)
+            {
+                var lastCandle = oneMinCandles.Last();
+                var secondLastCandle = oneMinCandles[^2];
+
+                if (secondLastCandle.High > prevVAH && lastCandle.Close < prevVAH) { result.MarketProfileSignal = "Look Above and Fail at Y-VAH"; return; }
+                if (secondLastCandle.Low < prevVAL && lastCandle.Close > prevVAL) { result.MarketProfileSignal = "Look Below and Fail at Y-VAL"; return; }
+            }
+
+            if (ltp > prevVAH) { result.MarketProfileSignal = "Initiative Buying Above Y-VAH"; return; }
+            if (ltp < prevVAL) { result.MarketProfileSignal = "Initiative Selling Below Y-VAL"; return; }
+
+            result.MarketProfileSignal = "Trading Inside Y-Value";
+        }
 
         private string CalculateOiSignal(List<Candle> candles)
         {
@@ -310,7 +337,6 @@ namespace TradingConsole.Wpf.Services
         private decimal CalculateAnchoredVwap(List<Candle> candles) { if (candles == null || !candles.Any()) return 0; decimal cumulativePriceVolume = candles.Sum(c => c.Close * c.Volume); long cumulativeVolume = candles.Sum(c => c.Volume); return (cumulativeVolume > 0) ? cumulativePriceVolume / cumulativeVolume : 0; }
         private string GetInitialBalanceSignal(decimal ltp, MarketProfile profile, string securityId) { if (!profile.IsInitialBalanceSet) return "IB Forming"; if (!_stateManager.InitialBalanceState.ContainsKey(securityId)) _stateManager.InitialBalanceState[securityId] = (false, false); var (isBreakout, isBreakdown) = _stateManager.InitialBalanceState[securityId]; if (ltp > profile.InitialBalanceHigh && !isBreakout) { _stateManager.InitialBalanceState[securityId] = (true, false); return "IB Breakout"; } if (ltp < profile.InitialBalanceLow && !isBreakdown) { _stateManager.InitialBalanceState[securityId] = (false, true); return "IB Breakdown"; } if (ltp > profile.InitialBalanceHigh && isBreakout) return "IB Extension Up"; if (ltp < profile.InitialBalanceLow && isBreakdown) return "IB Extension Down"; return "Inside IB"; }
         private string AnalyzePriceRelativeToYesterdayProfile(decimal ltp, MarketProfileData? previousDay) { if (previousDay == null || ltp == 0) return "N/A"; if (ltp > previousDay.TpoLevelsInfo.ValueAreaHigh) return "Trading Above Y-VAH"; if (ltp < previousDay.TpoLevelsInfo.ValueAreaLow) return "Trading Below Y-VAL"; return "Trading Inside Y-Value"; }
-        private void RunMarketProfileAnalysis(DashboardInstrument instrument, MarketProfile currentProfile, AnalysisResult result) { var previousDayProfile = _stateManager.HistoricalMarketProfiles.GetValueOrDefault(instrument.SecurityId)?.FirstOrDefault(p => p.Date.Date < DateTime.Today.Date); if (previousDayProfile == null) { result.MarketProfileSignal = "Awaiting Previous Day Data"; return; } var prevVAH = previousDayProfile.TpoLevelsInfo.ValueAreaHigh; var currentVAL = currentProfile.DevelopingTpoLevels.ValueAreaLow; if (currentVAL > prevVAH) { result.MarketProfileSignal = "True Acceptance Above Y-VAH"; return; } result.MarketProfileSignal = "Trading Inside Y-Value"; }
         private string RunTier1InstitutionalIntentAnalysis(DashboardInstrument spotIndex) { return "Neutral"; }
         public void RunDailyBiasAnalysis(DashboardInstrument instrument, AnalysisResult result) { var profiles = _stateManager.HistoricalMarketProfiles.GetValueOrDefault(instrument.SecurityId); if (profiles == null || profiles.Count < 3) { result.DailyBias = "Insufficient History"; result.MarketStructure = "Unknown"; return; } var sortedProfiles = profiles.OrderByDescending(p => p.Date).ToList(); var p1 = sortedProfiles[0]; var p2 = sortedProfiles[1]; var p3 = sortedProfiles[2]; bool isP1Higher = p1.TpoLevelsInfo.ValueAreaLow > p2.TpoLevelsInfo.ValueAreaHigh; bool isP2Higher = p2.TpoLevelsInfo.ValueAreaLow > p3.TpoLevelsInfo.ValueAreaHigh; bool isP1OverlapHigher = p1.TpoLevelsInfo.PointOfControl > p2.TpoLevelsInfo.ValueAreaHigh; bool isP2OverlapHigher = p2.TpoLevelsInfo.PointOfControl > p3.TpoLevelsInfo.ValueAreaHigh; if ((isP1Higher && isP2Higher) || (isP1OverlapHigher && isP2OverlapHigher)) { result.MarketStructure = "Trending Up"; result.DailyBias = "Bullish"; return; } bool isP1Lower = p1.TpoLevelsInfo.ValueAreaHigh < p2.TpoLevelsInfo.ValueAreaLow; bool isP2Lower = p2.TpoLevelsInfo.ValueAreaHigh < p3.TpoLevelsInfo.ValueAreaLow; bool isP1OverlapLower = p1.TpoLevelsInfo.PointOfControl < p2.TpoLevelsInfo.ValueAreaLow; bool isP2OverlapLower = p2.TpoLevelsInfo.PointOfControl < p3.TpoLevelsInfo.ValueAreaLow; if ((isP1Lower && isP2Lower) || (isP1OverlapLower && isP2OverlapLower)) { result.MarketStructure = "Trending Down"; result.DailyBias = "Bearish"; return; } result.MarketStructure = "Balancing"; result.DailyBias = "Neutral / Rotational"; }
         public decimal GetTickSize(DashboardInstrument? instrument) => (instrument?.InstrumentType == "INDEX") ? 1.0m : 0.05m;

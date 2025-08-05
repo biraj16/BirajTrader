@@ -40,7 +40,6 @@ namespace TradingConsole.Wpf.Services
                 conviction = (int)Math.Round(conviction * 0.5); // Reduce conviction by 50% during open
             }
 
-            // --- NEW: Apply the user's strategic trend filter ---
             conviction = ApplyTrendFilter(result, conviction);
             result.ConvictionScore = conviction;
 
@@ -82,46 +81,23 @@ namespace TradingConsole.Wpf.Services
             }
         }
 
-        /// <summary>
-        /// NEW: Applies a strategic filter based on the overall market trend, as per user's experience.
-        /// This acts as a final gatekeeper for signals.
-        /// </summary>
         private int ApplyTrendFilter(AnalysisResult result, int currentConviction)
         {
             bool isAtSupport = result.CustomLevelSignal == "At Key Support" || result.DayRangeSignal == "Near Low" || result.VwapBandSignal == "At Lower Band";
             bool isAtResistance = result.CustomLevelSignal == "At Key Resistance" || result.DayRangeSignal == "Near High" || result.VwapBandSignal == "At Upper Band";
 
-            // Rule 1: In a bullish market ("Trending Up")
             if (result.MarketStructure == "Trending Up")
             {
-                // Veto any sell signals (counter-trend shorts)
-                if (currentConviction < 0)
-                {
-                    return 0; // Force to neutral
-                }
-                // Reward buy signals that occur at support levels (buy the dip)
-                if (currentConviction > 0 && isAtSupport)
-                {
-                    return currentConviction + 2; // Add a bonus to the conviction score
-                }
+                if (currentConviction < 0) return 0;
+                if (currentConviction > 0 && isAtSupport) return currentConviction + 2;
             }
 
-            // Rule 2: In a bearish market ("Trending Down")
             if (result.MarketStructure == "Trending Down")
             {
-                // Veto any buy signals (counter-trend longs)
-                if (currentConviction > 0)
-                {
-                    return 0; // Force to neutral
-                }
-                // Reward sell signals that occur at resistance levels (sell the rip)
-                if (currentConviction < 0 && isAtResistance)
-                {
-                    return currentConviction - 2; // Add a bonus to the conviction score (make it more negative)
-                }
+                if (currentConviction > 0) return 0;
+                if (currentConviction < 0 && isAtResistance) return currentConviction - 2;
             }
 
-            // In a balancing/choppy market, no filter is applied. Return the original score.
             return currentConviction;
         }
 
@@ -162,9 +138,27 @@ namespace TradingConsole.Wpf.Services
 
         private bool IsSignalActive(AnalysisResult r, string driverName)
         {
-            // This method maps the driver name from settings to the live analysis result
             switch (driverName)
             {
+                // Confluence Signals
+                case "Confluence Momentum (Bullish)":
+                    return r.PriceVsVwapSignal == "Above VWAP" && r.EmaSignal5Min == "Bullish Cross" && r.InstitutionalIntent == "Bullish";
+                case "Confluence Momentum (Bearish)":
+                    return r.PriceVsVwapSignal == "Below VWAP" && r.EmaSignal5Min == "Bearish Cross" && r.InstitutionalIntent == "Bearish";
+
+                // Volatility Signals
+                case "Option Breakout Setup":
+                    return r.VolatilityStateSignal == "IV Squeeze Setup";
+
+                // Market Profile Signals
+                case "True Acceptance Above Y-VAH": return r.MarketProfileSignal == "True Acceptance Above Y-VAH";
+                case "True Acceptance Below Y-VAL": return r.MarketProfileSignal == "True Acceptance Below Y-VAL";
+                case "Look Above and Fail at Y-VAH": return r.MarketProfileSignal == "Look Above and Fail at Y-VAH";
+                case "Look Below and Fail at Y-VAL": return r.MarketProfileSignal == "Look Below and Fail at Y-VAL";
+                case "Initiative Buying Above Y-VAH": return r.MarketProfileSignal == "Initiative Buying Above Y-VAH";
+                case "Initiative Selling Below Y-VAL": return r.MarketProfileSignal == "Initiative Selling Below Y-VAL";
+
+                // Standard Trend Signals
                 case "Price above VWAP": return r.PriceVsVwapSignal == "Above VWAP";
                 case "Price below VWAP": return r.PriceVsVwapSignal == "Below VWAP";
                 case "5m VWAP EMA confirms bullish trend": return r.VwapEmaSignal5Min == "Bullish Cross";
@@ -175,7 +169,11 @@ namespace TradingConsole.Wpf.Services
                 case "High OTM Put Gamma": return r.GammaSignal == "High OTM Put Gamma";
                 case "Bullish Pattern with Volume Confirmation": return r.CandleSignal5Min.Contains("Bullish") && r.VolumeSignal == "Volume Burst";
                 case "Bearish Pattern with Volume Confirmation": return r.CandleSignal5Min.Contains("Bearish") && r.VolumeSignal == "Volume Burst";
-                // Add more mappings here for all other drivers...
+                case "Institutional Intent is Bullish": return r.InstitutionalIntent == "Bullish";
+                case "Institutional Intent is Bearish": return r.InstitutionalIntent == "Bearish";
+                case "IB breakout is extending": return r.InitialBalanceSignal == "IB Extension Up";
+                case "IB breakdown is extending": return r.InitialBalanceSignal == "IB Extension Down";
+
                 default: return false;
             }
         }
