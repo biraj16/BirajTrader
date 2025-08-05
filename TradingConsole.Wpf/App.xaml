@@ -1,0 +1,142 @@
+﻿<Application x:Class="TradingConsole.Wpf.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:TradingConsole.Wpf"
+             xmlns:converters="clr-namespace:TradingConsole.Wpf.Converters">
+    <!-- The StartupUri has been removed from here to prevent the duplicate window -->
+    <Application.Resources>
+        <ResourceDictionary>
+            <!-- Converters -->
+            <converters:ValueToBrushConverter x:Key="ValueToBrushConverter"/>
+            <converters:BooleanToVisibilityConverter x:Key="BoolToVis"/>
+            <converters:OiToWidthConverter x:Key="OiToWidthConverter"/>
+            <converters:AbsoluteValueConverter x:Key="AbsoluteValueConverter"/>
+            <converters:ValueToSignConverter x:Key="ValueToSignConverter"/>
+
+            <!-- Base Styles -->
+            <Style TargetType="Button">
+                <Setter Property="Padding" Value="10,5"/>
+                <Setter Property="Margin" Value="5"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Background" Value="#E9ECEF"/>
+                <Setter Property="BorderBrush" Value="#DEE2E6"/>
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="#DEE2E6"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="Background" Value="#007BFF"/>
+                <Setter Property="Foreground" Value="White"/>
+                <Setter Property="BorderBrush" Value="#0069D9"/>
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="#0069D9"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="Background" Value="#DC3545"/>
+                <Setter Property="Foreground" Value="White"/>
+                <Setter Property="BorderBrush" Value="#C82333"/>
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="#C82333"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style TargetType="TabControl">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+            </Style>
+
+            <Style TargetType="TabItem">
+                <Setter Property="Padding" Value="12,6"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Style.Triggers>
+                    <Trigger Property="IsSelected" Value="True">
+                        <Setter Property="Foreground" Value="#007BFF"/>
+                    </Trigger>
+                    <Trigger Property="IsSelected" Value="False">
+                        <Setter Property="Foreground" Value="#495057"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style TargetType="DataGrid">
+                <Setter Property="Background" Value="White"/>
+                <Setter Property="BorderBrush" Value="#DEE2E6"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+                <Setter Property="HorizontalGridLinesBrush" Value="#E9ECEF"/>
+                <Setter Property="CanUserAddRows" Value="False"/>
+                <Setter Property="CanUserDeleteRows" Value="False"/>
+                <Setter Property="AutoGenerateColumns" Value="False"/>
+                <Setter Property="IsReadOnly" Value="True"/>
+                <Setter Property="AlternatingRowBackground" Value="#F8F9FA"/>
+            </Style>
+
+            <Style TargetType="DataGridColumnHeader">
+                <Setter Property="Background" Value="#F8F9FA"/>
+                <Setter Property="FontWeight" Value="Bold"/>
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                <Setter Property="Padding" Value="8,5"/>
+                <Setter Property="BorderThickness" Value="0,0,1,1"/>
+                <Setter Property="BorderBrush" Value="#DEE2E6"/>
+            </Style>
+
+            <Style TargetType="DataGridCell">
+                <Setter Property="Padding" Value="8,5"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Focusable" Value="False"/>
+                <Setter Property="HorizontalAlignment" Value="Center"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+            </Style>
+
+            <!-- Specific Styles -->
+            <Style x:Key="PnlTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{Binding Path=Text, RelativeSource={RelativeSource Self}, Converter={StaticResource ValueToBrushConverter}}"/>
+            </Style>
+
+            <Style x:Key="OptionChainRowStyle" TargetType="DataGridRow">
+                <Setter Property="Background" Value="White"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsAtm}" Value="True">
+                        <Setter Property="Background" Value="#FFFBEA"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="CallCellStyle" TargetType="DataGridCell">
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding CallState}" Value="ITM">
+                        <Setter Property="Background" Value="#E6F4EA"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="PutCellStyle" TargetType="DataGridCell">
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding PutState}" Value="ITM">
+                        <Setter Property="Background" Value="#FFF0F1"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="StrikePriceCellStyle" TargetType="DataGridCell">
+                <Setter Property="FontWeight" Value="Bold"/>
+                <Setter Property="Background" Value="#E9ECEF"/>
+                <Setter Property="Foreground" Value="#212529"/>
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

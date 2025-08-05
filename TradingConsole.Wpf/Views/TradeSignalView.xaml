@@ -1,0 +1,147 @@
+﻿<UserControl x:Class="TradingConsole.Wpf.Views.TradeSignalView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:viewmodels="clr-namespace:TradingConsole.Wpf.ViewModels"
+             mc:Ignorable="d" 
+             d:DataContext="{d:DesignInstance Type=viewmodels:TradeSignalViewModel, IsDesignTimeCreatable=True}"
+             d:DesignHeight="800" d:DesignWidth="1200" Background="#FF1E1E1E" Foreground="White">
+
+    <UserControl.Resources>
+        <!-- DataTemplate for displaying a single factor -->
+        <DataTemplate x:Key="FactorDataTemplate">
+            <Border BorderBrush="#FF444444" BorderThickness="0,0,0,1" Padding="8,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="{Binding FactorName}" VerticalAlignment="Center" Foreground="LightGray"/>
+                    <TextBlock Grid.Column="1" Text="{Binding FactorValue}" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="White"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Sentiment}" Value="Bullish">
+                                        <Setter Property="Foreground" Value="#FF4CAF50"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Sentiment}" Value="Bearish">
+                                        <Setter Property="Foreground" Value="#FFF44336"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid Margin="15" DataContext="{Binding NiftyAnalysisResult}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Main Header -->
+        <Border Grid.Row="0" Background="#FF2D2D30" CornerRadius="5" Padding="15" Margin="0,0,0,15">
+            <StackPanel HorizontalAlignment="Center">
+                <TextBlock Text="{Binding Symbol}" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,5,0,0">
+                    <TextBlock Text="{Binding LTP, StringFormat='{}{0:N2}'}" FontSize="18" FontWeight="SemiBold"/>
+                    <TextBlock Margin="10,0,0,0" FontSize="16" VerticalAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="White"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding PriceVsCloseSignal}" Value="Above Close">
+                                        <Setter Property="Foreground" Value="#FF4CAF50"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding PriceVsCloseSignal}" Value="Below Close">
+                                        <Setter Property="Foreground" Value="#FFF44336"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                        <!-- Note: Assumes PriceChange and PriceChangePercent properties exist on AnalysisResult -->
+                        <Run Text="("/>
+                        <Run Text="{Binding PriceChange, StringFormat='+0.00;-0.00;0.00'}"/>
+                        <Run Text=" "/>
+                        <Run Text="{Binding PriceChangePercent, StringFormat='({0:P2})'}"/>
+                        <Run Text=")"/>
+                    </TextBlock>
+                </StackPanel>
+                <Border Background="#FF3E3E42" CornerRadius="3" Padding="8,4" Margin="0,10,0,0">
+                    <TextBlock Text="{Binding MarketThesis, StringFormat='Thesis: {0}'}" FontStyle="Italic" HorizontalAlignment="Center"/>
+                </Border>
+
+                <!-- Intraday Profile Levels -->
+                <Border BorderBrush="#FF444444" BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,15,0,0">
+                    <Grid MinWidth="300">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- dVAH -->
+                        <StackPanel Grid.Column="0" HorizontalAlignment="Center">
+                            <TextBlock Text="dVAH" Foreground="LightGray" FontSize="11" HorizontalAlignment="Center"/>
+                            <TextBlock Text="{Binding DevelopingVah, StringFormat='{}{0:N2}'}" FontWeight="SemiBold" FontSize="14" Foreground="#FFF44336" HorizontalAlignment="Center"/>
+                        </StackPanel>
+
+                        <Rectangle Grid.Column="1" Width="1" Fill="#FF444444" Margin="10,0"/>
+
+                        <!-- dPOC -->
+                        <StackPanel Grid.Column="2" HorizontalAlignment="Center">
+                            <TextBlock Text="dPOC" Foreground="LightGray" FontSize="11" HorizontalAlignment="Center"/>
+                            <TextBlock Text="{Binding DevelopingPoc, StringFormat='{}{0:N2}'}" FontWeight="Bold" FontSize="16" HorizontalAlignment="Center"/>
+                        </StackPanel>
+
+                        <Rectangle Grid.Column="3" Width="1" Fill="#FF444444" Margin="10,0"/>
+
+                        <!-- dVAL -->
+                        <StackPanel Grid.Column="4" HorizontalAlignment="Center">
+                            <TextBlock Text="dVAL" Foreground="LightGray" FontSize="11" HorizontalAlignment="Center"/>
+                            <TextBlock Text="{Binding DevelopingVal, StringFormat='{}{0:N2}'}" FontWeight="SemiBold" FontSize="14" Foreground="#FF4CAF50" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <!-- Bullish vs Bearish Columns -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="15"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Bullish Factors Column -->
+            <Border Grid.Column="0" Background="#FF2D2D30" CornerRadius="5">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="BULLISH FACTORS" FontWeight="Bold" FontSize="16" Foreground="#FF4CAF50" Background="#FF3E3E42" Padding="10" TextAlignment="Center"/>
+                        <ItemsControl ItemsSource="{Binding DataContext.BullishFactors, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                      ItemTemplate="{StaticResource FactorDataTemplate}"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Bearish Factors Column -->
+            <Border Grid.Column="2" Background="#FF2D2D30" CornerRadius="5">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="BEARISH FACTORS" FontWeight="Bold" FontSize="16" Foreground="#FFF44336" Background="#FF3E3E42" Padding="10" TextAlignment="Center"/>
+                        <ItemsControl ItemsSource="{Binding DataContext.BearishFactors, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                      ItemTemplate="{StaticResource FactorDataTemplate}"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>
