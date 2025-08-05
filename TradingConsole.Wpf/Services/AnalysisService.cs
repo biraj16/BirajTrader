@@ -167,7 +167,27 @@ namespace TradingConsole.Wpf.Services
         private void LoadIndicatorStateFromStorage(string securityId) { var timeframes = new[] { TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(15) }; foreach (var tf in timeframes) { var key = $"{securityId}_{tf.TotalMinutes}"; var savedState = _indicatorStateService.GetState(key); if (savedState != null) { _stateManager.MultiTimeframeRsiState[securityId][tf].AvgGain = savedState.LastRsiAvgGain; _stateManager.MultiTimeframeRsiState[securityId][tf].AvgLoss = savedState.LastRsiAvgLoss; _stateManager.MultiTimeframeAtrState[securityId][tf].CurrentAtr = savedState.LastAtr; _stateManager.MultiTimeframeObvState[securityId][tf].CurrentObv = savedState.LastObv; _stateManager.MultiTimeframeObvState[securityId][tf].CurrentMovingAverage = savedState.LastObvMovingAverage; } } }
         private DashboardInstrument GetInstrumentForVolumeAnalysis(DashboardInstrument instrument) { if (instrument.InstrumentType == "INDEX") { var future = _instrumentCache.Values.FirstOrDefault(i => i.IsFuture && i.UnderlyingSymbol == instrument.Symbol); if (future != null) return future; } return instrument; }
         private void UpdateMarketProfileForCandle(DashboardInstrument instrument, Candle lastClosedCandle) { if (instrument.InstrumentType == "FUTIDX") { var underlyingIndex = _instrumentCache.Values.FirstOrDefault(i => i.InstrumentType == "INDEX" && i.UnderlyingSymbol == instrument.UnderlyingSymbol); if (underlyingIndex != null) { var indexCandles = _stateManager.GetCandles(underlyingIndex.SecurityId, TimeSpan.FromMinutes(1)); var matchingIndexCandle = indexCandles?.FirstOrDefault(c => c.Timestamp == lastClosedCandle.Timestamp); if (matchingIndexCandle != null && _stateManager.MarketProfiles.TryGetValue(underlyingIndex.SecurityId, out var profile)) { _signalGenerationService.UpdateMarketProfile(profile, matchingIndexCandle, lastClosedCandle); } } } else if (instrument.InstrumentType != "INDEX") { if (_stateManager.MarketProfiles.TryGetValue(instrument.SecurityId, out var profile)) { _signalGenerationService.UpdateMarketProfile(profile, lastClosedCandle, lastClosedCandle); } } }
-        private void LinkFuturesDataToIndex() { var niftyIndex = _instrumentCache.Values.FirstOrDefault(i => i.Symbol == "Nifty 50"); var niftyFuture = _instrumentCache.Values.FirstOrDefault(i => i.IsFuture && i.UnderlyingSymbol == "NIFTY"); if (niftyIndex != null && niftyFuture != null && _stateManager.AnalysisResults.TryGetValue(niftyIndex.SecurityId, out var indexResult) && _stateManager.AnalysisResults.TryGetValue(niftyFuture.SecurityId, out var futureResult)) { indexResult.PriceVsVwapSignal = futureResult.PriceVsVwapSignal; indexResult.VwapBandSignal = futureResult.VwapBandSignal; indexResult.Vwap = futureResult.Vwap; } }
+
+        private void LinkFuturesDataToIndex()
+        {
+            var niftyIndex = _instrumentCache.Values.FirstOrDefault(i => i.Symbol == "Nifty 50");
+            var niftyFuture = _instrumentCache.Values.FirstOrDefault(i => i.IsFuture && i.UnderlyingSymbol == "NIFTY");
+
+            if (niftyIndex != null && niftyFuture != null &&
+                _stateManager.AnalysisResults.TryGetValue(niftyIndex.SecurityId, out var indexResult) &&
+                _stateManager.AnalysisResults.TryGetValue(niftyFuture.SecurityId, out var futureResult))
+            {
+                // Copy all relevant volume-based and OI-based signals from the future to the index
+                indexResult.PriceVsVwapSignal = futureResult.PriceVsVwapSignal;
+                indexResult.VwapBandSignal = futureResult.VwapBandSignal;
+                indexResult.Vwap = futureResult.Vwap;
+                indexResult.VolumeSignal = futureResult.VolumeSignal;
+                indexResult.OiSignal = futureResult.OiSignal;
+                // GammaSignal is NOT copied as it's calculated on the index's option chain
+                indexResult.IntradayIvSpikeSignal = futureResult.IntradayIvSpikeSignal;
+            }
+        }
+
         public event PropertyChangedEventHandler? PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string? propertyName = null) { PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName)); }
         #endregion

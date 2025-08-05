@@ -129,45 +129,57 @@ namespace TradingConsole.Wpf.Services
         {
             var bullDrivers = new List<string>();
             var bearDrivers = new List<string>();
+            int score = 0;
 
-            int structureScore = 0;
-            int momentumScore = 0;
-            int confirmationScore = 0;
+            var allDrivers = _settingsViewModel.Strategy.TrendingBullDrivers
+                .Concat(_settingsViewModel.Strategy.TrendingBearDrivers)
+                .Concat(_settingsViewModel.Strategy.RangeBoundBullishDrivers)
+                .Concat(_settingsViewModel.Strategy.RangeBoundBearishDrivers)
+                .Concat(_settingsViewModel.Strategy.VolatileBullishDrivers)
+                .Concat(_settingsViewModel.Strategy.VolatileBearishDrivers);
 
-            if (r.MarketStructure == "Trending Up") structureScore += 3;
-            if (r.MarketStructure == "Trending Down") structureScore -= 3;
-            if (r.YesterdayProfileSignal == "Trading Above Y-VAH") structureScore += 2;
-            if (r.YesterdayProfileSignal == "Trading Below Y-VAL") structureScore -= 2;
+            foreach (var driver in allDrivers.Where(d => d.IsEnabled))
+            {
+                bool signalActive = IsSignalActive(r, driver.Name);
+                if (signalActive)
+                {
+                    score += driver.Weight;
+                    if (driver.Weight > 0)
+                    {
+                        bullDrivers.Add($"{driver.Name} (+{driver.Weight})");
+                    }
+                    else
+                    {
+                        bearDrivers.Add($"{driver.Name} ({driver.Weight})");
+                    }
+                }
+            }
 
-            if (r.PriceVsVwapSignal == "Above VWAP") momentumScore += 2;
-            if (r.PriceVsVwapSignal == "Below VWAP") momentumScore -= 2;
-            if (r.EmaSignal5Min == "Bullish Cross") momentumScore += 2;
-            if (r.EmaSignal5Min == "Bearish Cross") momentumScore -= 2;
-            if (r.CandleSignal5Min.Contains("Bullish")) momentumScore += 1;
-            if (r.CandleSignal5Min.Contains("Bearish")) momentumScore -= 1;
+            bool isChoppy = r.GammaSignal == "Balanced OTM Gamma";
 
-            if (r.VolumeSignal == "Volume Burst" && r.LTP > r.Vwap) confirmationScore += 2;
-            if (r.VolumeSignal == "Volume Burst" && r.LTP < r.Vwap) confirmationScore -= 2;
-            if (r.OiSignal == "Long Buildup") confirmationScore += 2;
-            if (r.OiSignal == "Short Buildup") confirmationScore -= 2;
-            if (r.IntradayIvSpikeSignal == "IV Spike Up") confirmationScore += 1;
-            if (r.GammaSignal == "High OTM Call Gamma") confirmationScore += 2;
-            if (r.GammaSignal == "High OTM Put Gamma") confirmationScore -= 2;
-
-
-            bool isChoppy = (Math.Abs(structureScore) < 2 && Math.Abs(momentumScore) < 2) ||
-                            (structureScore > 2 && momentumScore < -2) ||
-                            (structureScore < -2 && momentumScore > 2) ||
-                            (r.GammaSignal == "Balanced OTM Gamma");
-
-            int finalScore = structureScore + momentumScore + confirmationScore;
-
-            if (structureScore > 0) bullDrivers.Add($"Structure Bullish (+{structureScore})"); else if (structureScore < 0) bearDrivers.Add($"Structure Bearish ({structureScore})");
-            if (momentumScore > 0) bullDrivers.Add($"Momentum Bullish (+{momentumScore})"); else if (momentumScore < 0) bearDrivers.Add($"Momentum Bearish ({momentumScore})");
-            if (confirmationScore > 0) bullDrivers.Add($"Confirmation Bullish (+{confirmationScore})"); else if (confirmationScore < 0) bearDrivers.Add($"Confirmation Bearish ({confirmationScore})");
-
-            return (bullDrivers, bearDrivers, finalScore, isChoppy);
+            return (bullDrivers, bearDrivers, score, isChoppy);
         }
+
+        private bool IsSignalActive(AnalysisResult r, string driverName)
+        {
+            // This method maps the driver name from settings to the live analysis result
+            switch (driverName)
+            {
+                case "Price above VWAP": return r.PriceVsVwapSignal == "Above VWAP";
+                case "Price below VWAP": return r.PriceVsVwapSignal == "Below VWAP";
+                case "5m VWAP EMA confirms bullish trend": return r.VwapEmaSignal5Min == "Bullish Cross";
+                case "5m VWAP EMA confirms bearish trend": return r.VwapEmaSignal5Min == "Bearish Cross";
+                case "OI confirms new longs": return r.OiSignal == "Long Buildup";
+                case "OI confirms new shorts": return r.OiSignal == "Short Buildup";
+                case "High OTM Call Gamma": return r.GammaSignal == "High OTM Call Gamma";
+                case "High OTM Put Gamma": return r.GammaSignal == "High OTM Put Gamma";
+                case "Bullish Pattern with Volume Confirmation": return r.CandleSignal5Min.Contains("Bullish") && r.VolumeSignal == "Volume Burst";
+                case "Bearish Pattern with Volume Confirmation": return r.CandleSignal5Min.Contains("Bearish") && r.VolumeSignal == "Volume Burst";
+                // Add more mappings here for all other drivers...
+                default: return false;
+            }
+        }
+
 
         private MarketThesis UpdateIntradayThesis(AnalysisResult result) { DominantPlayer player = DetermineDominantPlayer(result); result.DominantPlayer = player; if (result.MarketStructure == "Trending Up") { if (player == DominantPlayer.Buyers) return MarketThesis.Bullish_Trend; if (player == DominantPlayer.Sellers) return MarketThesis.Bullish_Rotation; return MarketThesis.Bullish_Trend; } if (result.MarketStructure == "Trending Down") { if (player == DominantPlayer.Sellers) return MarketThesis.Bearish_Trend; if (player == DominantPlayer.Buyers) return MarketThesis.Bearish_Rotation; return MarketThesis.Bearish_Trend; } return MarketThesis.Balancing; }
         private DominantPlayer DetermineDominantPlayer(AnalysisResult result) { int buyerEvidence = 0; int sellerEvidence = 0; if (result.PriceVsVwapSignal == "Above VWAP") buyerEvidence++; if (result.PriceVsVwapSignal == "Below VWAP") sellerEvidence++; if (result.EmaSignal5Min == "Bullish Cross") buyerEvidence++; if (result.EmaSignal5Min == "Bearish Cross") sellerEvidence++; if (result.OiSignal == "Long Buildup") buyerEvidence++; if (result.OiSignal == "Short Buildup") sellerEvidence++; if (buyerEvidence > sellerEvidence) return DominantPlayer.Buyers; if (sellerEvidence > buyerEvidence) return DominantPlayer.Sellers; return DominantPlayer.Balance; }

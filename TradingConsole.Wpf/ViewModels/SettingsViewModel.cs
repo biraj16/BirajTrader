@@ -232,6 +232,7 @@ namespace TradingConsole.Wpf.ViewModels
             MaxDailyLossLimit = _settings.MaxDailyLossLimit;
 
             Strategy = _settings.Strategy ?? new StrategySettings();
+            MergeDefaultDrivers(Strategy);
 
             // --- ADDED: Load Automation Settings ---
             AutomationSettings = _settings.AutomationSettings ?? new AutomationSettings();
@@ -250,6 +251,30 @@ namespace TradingConsole.Wpf.ViewModels
             TelegramBotToken = _settings.TelegramBotToken;
             TelegramChatId = _settings.TelegramChatId;
         }
+
+        private void MergeDefaultDrivers(StrategySettings loadedStrategy)
+        {
+            var defaultStrategy = new StrategySettings();
+
+            MergeDriverCollection(loadedStrategy.TrendingBullDrivers, defaultStrategy.TrendingBullDrivers);
+            MergeDriverCollection(loadedStrategy.TrendingBearDrivers, defaultStrategy.TrendingBearDrivers);
+            MergeDriverCollection(loadedStrategy.RangeBoundBullishDrivers, defaultStrategy.RangeBoundBullishDrivers);
+            MergeDriverCollection(loadedStrategy.RangeBoundBearishDrivers, defaultStrategy.RangeBoundBearishDrivers);
+            MergeDriverCollection(loadedStrategy.VolatileBullishDrivers, defaultStrategy.VolatileBullishDrivers);
+            MergeDriverCollection(loadedStrategy.VolatileBearishDrivers, defaultStrategy.VolatileBearishDrivers);
+        }
+
+        private void MergeDriverCollection(ObservableCollection<SignalDriver> loadedDrivers, ObservableCollection<SignalDriver> defaultDrivers)
+        {
+            foreach (var defaultDriver in defaultDrivers)
+            {
+                if (!loadedDrivers.Any(d => d.Name == defaultDriver.Name))
+                {
+                    loadedDrivers.Add(defaultDriver);
+                }
+            }
+        }
+
 
         private void ExecuteSaveSettings(object? parameter)
         {

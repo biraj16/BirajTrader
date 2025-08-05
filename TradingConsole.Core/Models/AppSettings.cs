@@ -61,6 +61,7 @@ namespace TradingConsole.Core.Models
                 new SignalDriver("Price above VWAP", 2),
                 new SignalDriver("OI confirms new longs", 2),
                 new SignalDriver("Initiative Buying Above Y-VAH", 2),
+                new SignalDriver("High OTM Call Gamma", 2)
             };
 
             TrendingBearDrivers = new ObservableCollection<SignalDriver>
@@ -75,6 +76,7 @@ namespace TradingConsole.Core.Models
                 new SignalDriver("Price below VWAP", 2),
                 new SignalDriver("OI confirms new shorts", 2),
                 new SignalDriver("Initiative Selling Below Y-VAL", 2),
+                new SignalDriver("High OTM Put Gamma", -2)
             };
 
             RangeBoundBullishDrivers = new ObservableCollection<SignalDriver>
