@@ -126,7 +126,7 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
-                                    <!-- ADDED: Row for Gamma Setting -->
+                                    <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
@@ -163,9 +163,10 @@
                                 <TextBlock Grid.Row="6" Grid.Column="2" Text="VWAP Lower Band:" Margin="5"/>
                                 <TextBox Grid.Row="6" Grid.Column="3" Text="{Binding VwapLowerBandMultiplier, UpdateSourceTrigger=PropertyChanged}"/>
 
-                                <!-- ADDED: UI for Gamma Threshold -->
                                 <TextBlock Grid.Row="7" Grid.Column="0" Text="ATM Gamma Threshold:" Margin="5"/>
                                 <TextBox Grid.Row="7" Grid.Column="1" Text="{Binding AtmGammaThreshold, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock Grid.Row="7" Grid.Column="2" Text="Gamma Imbalance Ratio:" Margin="5"/>
+                                <TextBox Grid.Row="7" Grid.Column="3" Text="{Binding GammaImbalanceRatio, UpdateSourceTrigger=PropertyChanged}"/>
                             </Grid>
                         </StackPanel>
                     </GroupBox>

@@ -67,9 +67,11 @@ namespace TradingConsole.Wpf.ViewModels
         private decimal _vwapLowerBandMultiplier;
         public decimal VwapLowerBandMultiplier { get => _vwapLowerBandMultiplier; set { if (_vwapLowerBandMultiplier != value) { _vwapLowerBandMultiplier = value; OnPropertyChanged(); } } }
 
-        // --- ADDED: Property for the new Gamma setting ---
         private decimal _atmGammaThreshold;
         public decimal AtmGammaThreshold { get => _atmGammaThreshold; set { if (_atmGammaThreshold != value) { _atmGammaThreshold = value; OnPropertyChanged(); } } }
+
+        private decimal _gammaImbalanceRatio;
+        public decimal GammaImbalanceRatio { get => _gammaImbalanceRatio; set { if (_gammaImbalanceRatio != value) { _gammaImbalanceRatio = value; OnPropertyChanged(); } } }
         #endregion
 
         #region Custom Index Levels
@@ -203,8 +205,8 @@ namespace TradingConsole.Wpf.ViewModels
             VwapUpperBandMultiplier = _settings.VwapUpperBandMultiplier;
             VwapLowerBandMultiplier = _settings.VwapLowerBandMultiplier;
 
-            // --- ADDED: Load the new Gamma setting ---
             AtmGammaThreshold = _settings.AtmGammaThreshold;
+            GammaImbalanceRatio = _settings.GammaImbalanceRatio;
 
 
             var niftyLevels = _settings.CustomIndexLevels.GetValueOrDefault("NIFTY", new IndexLevels());
@@ -234,7 +236,6 @@ namespace TradingConsole.Wpf.ViewModels
             Strategy = _settings.Strategy ?? new StrategySettings();
             MergeDefaultDrivers(Strategy);
 
-            // --- ADDED: Load Automation Settings ---
             AutomationSettings = _settings.AutomationSettings ?? new AutomationSettings();
 
             MarketHolidays.Clear();
@@ -246,7 +247,6 @@ namespace TradingConsole.Wpf.ViewModels
             }
             NewHoliday = DateTime.Today;
 
-            // --- NEW: Load Notification settings ---
             IsTelegramNotificationEnabled = _settings.IsTelegramNotificationEnabled;
             TelegramBotToken = _settings.TelegramBotToken;
             TelegramChatId = _settings.TelegramChatId;
@@ -300,8 +300,8 @@ namespace TradingConsole.Wpf.ViewModels
             _settings.VwapUpperBandMultiplier = VwapUpperBandMultiplier;
             _settings.VwapLowerBandMultiplier = VwapLowerBandMultiplier;
 
-            // --- ADDED: Save the new Gamma setting ---
             _settings.AtmGammaThreshold = AtmGammaThreshold;
+            _settings.GammaImbalanceRatio = GammaImbalanceRatio;
 
             _settings.CustomIndexLevels["NIFTY"] = new IndexLevels
             {
@@ -334,10 +334,8 @@ namespace TradingConsole.Wpf.ViewModels
 
             _settings.Strategy = this.Strategy;
 
-            // --- ADDED: Save Automation Settings ---
             _settings.AutomationSettings = this.AutomationSettings;
 
-            // --- NEW: Save Notification settings ---
             _settings.IsTelegramNotificationEnabled = IsTelegramNotificationEnabled;
             _settings.TelegramBotToken = TelegramBotToken;
             _settings.TelegramChatId = TelegramChatId;
