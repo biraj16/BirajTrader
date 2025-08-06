@@ -250,22 +250,36 @@ namespace TradingConsole.Wpf.Services
             result.MarketProfileSignal = "Trading Inside Y-Value";
         }
 
+        /// <summary>
+        /// --- BUG FIX & ENHANCEMENT ---
+        /// The original logic was too noisy, comparing only the last two candles.
+        /// This revised logic analyzes the trend over a configurable lookback period (default 5 candles)
+        /// for a much more robust and meaningful signal.
+        /// </summary>
         private string CalculateOiSignal(List<Candle> candles)
         {
-            if (candles.Count < 2) return "Building History...";
-            var currentCandle = candles.Last();
-            var previousCandle = candles[candles.Count - 2];
-            if (previousCandle.OpenInterest == 0 || currentCandle.OpenInterest == 0) return "Building History...";
+            const int lookbackPeriod = 5; // Look back over the last 5 (x 3-min) = 15 minutes of data.
+            if (candles.Count < lookbackPeriod) return "Building History...";
 
-            bool isPriceUp = currentCandle.Close > previousCandle.Close;
-            bool isPriceDown = currentCandle.Close < previousCandle.Close;
-            bool isOiUp = currentCandle.OpenInterest > previousCandle.OpenInterest;
-            bool isOiDown = currentCandle.OpenInterest < previousCandle.OpenInterest;
+            var relevantCandles = candles.TakeLast(lookbackPeriod).ToList();
+            var firstCandle = relevantCandles.First();
+            var lastCandle = relevantCandles.Last();
+
+            if (firstCandle.OpenInterest == 0 || lastCandle.OpenInterest == 0) return "Building History...";
+
+            decimal priceChange = lastCandle.Close - firstCandle.Open;
+            long oiChange = lastCandle.OpenInterest - firstCandle.OpenInterest;
+
+            bool isPriceUp = priceChange > 0;
+            bool isPriceDown = priceChange < 0;
+            bool isOiUp = oiChange > 0;
+            bool isOiDown = oiChange < 0;
 
             if (isPriceUp && isOiUp) return "Long Buildup";
             if (isPriceUp && isOiDown) return "Short Covering";
             if (isPriceDown && isOiUp) return "Short Buildup";
             if (isPriceDown && isOiDown) return "Long Unwinding";
+
             return "Neutral";
         }
 
