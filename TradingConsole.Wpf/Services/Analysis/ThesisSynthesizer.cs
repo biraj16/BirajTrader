@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using TradingConsole.Core.Models;
 using TradingConsole.Wpf.Services.Analysis;
 using TradingConsole.Wpf.ViewModels;
 
@@ -100,40 +101,67 @@ namespace TradingConsole.Wpf.Services
             return currentConviction;
         }
 
+        /// <summary>
+        /// --- REFACTORED LOGIC ---
+        /// This method now implements a state-dependent "Playbook" approach. It selects the correct
+        /// set of signal drivers based on the current market thesis (Trending, Range-Bound, etc.),
+        /// making the analysis much more context-aware and robust.
+        /// </summary>
         private (List<string> BullishDrivers, List<string> BearishDrivers, int Score, bool IsChoppy) CalculateConfluenceScore(AnalysisResult r, MarketThesis thesis)
         {
             var bullDrivers = new List<string>();
             var bearDrivers = new List<string>();
-            int score = 0;
+            int bullScore = 0;
+            int bearScore = 0;
 
-            var allDrivers = _settingsViewModel.Strategy.TrendingBullDrivers
-                .Concat(_settingsViewModel.Strategy.TrendingBearDrivers)
-                .Concat(_settingsViewModel.Strategy.RangeBoundBullishDrivers)
-                .Concat(_settingsViewModel.Strategy.RangeBoundBearishDrivers)
-                .Concat(_settingsViewModel.Strategy.VolatileBullishDrivers)
-                .Concat(_settingsViewModel.Strategy.VolatileBearishDrivers);
-
-            foreach (var driver in allDrivers.Where(d => d.IsEnabled))
+            // Step 1: Select the correct "Playbook" of drivers based on the market thesis
+            IEnumerable<SignalDriver> driversToEvaluate;
+            switch (thesis)
             {
-                bool signalActive = IsSignalActive(r, driver.Name);
-                if (signalActive)
+                case MarketThesis.Bullish_Trend:
+                case MarketThesis.Bearish_Trend:
+                case MarketThesis.Bullish_Rotation:
+                case MarketThesis.Bearish_Rotation:
+                    driversToEvaluate = _settingsViewModel.Strategy.TrendingBullDrivers.Concat(_settingsViewModel.Strategy.TrendingBearDrivers);
+                    break;
+                case MarketThesis.Balancing:
+                    driversToEvaluate = _settingsViewModel.Strategy.RangeBoundBullishDrivers.Concat(_settingsViewModel.Strategy.RangeBoundBearishDrivers);
+                    break;
+                default: // Indeterminate, Choppy, etc.
+                    driversToEvaluate = Enumerable.Empty<SignalDriver>();
+                    break;
+            }
+
+            // Also consider volatile drivers if the regime is volatile
+            if (r.MarketRegime == "High Volatility")
+            {
+                driversToEvaluate = driversToEvaluate.Concat(_settingsViewModel.Strategy.VolatileBullishDrivers).Concat(_settingsViewModel.Strategy.VolatileBearishDrivers);
+            }
+
+            // Step 2: Evaluate only the selected drivers
+            foreach (var driver in driversToEvaluate.Where(d => d.IsEnabled))
+            {
+                if (IsSignalActive(r, driver.Name))
                 {
-                    score += driver.Weight;
                     if (driver.Weight > 0)
                     {
+                        bullScore += driver.Weight;
                         bullDrivers.Add($"{driver.Name} (+{driver.Weight})");
                     }
                     else
                     {
-                        // For display purposes, show bearish weights as positive numbers
-                        bearDrivers.Add($"{driver.Name} (-{Math.Abs(driver.Weight)})");
+                        bearScore += driver.Weight;
+                        bearDrivers.Add($"{driver.Name} ({driver.Weight})");
                     }
                 }
             }
 
-            bool isChoppy = r.GammaSignal == "Balanced OTM Gamma";
+            // Step 3: Smarter Chop Detection
+            // If there's strong conviction on BOTH sides, the market is conflicting. Stand aside.
+            bool isChoppy = (bullScore >= 5 && Math.Abs(bearScore) >= 5) || r.GammaSignal == "Balanced OTM Gamma";
 
-            return (bullDrivers, bearDrivers, score, isChoppy);
+            int finalScore = bullScore + bearScore;
+            return (bullDrivers, bearDrivers, finalScore, isChoppy);
         }
 
         private bool IsSignalActive(AnalysisResult r, string driverName)

@@ -396,14 +396,17 @@ namespace TradingConsole.Wpf.Services
         private string GetInitialBalanceSignal(decimal ltp, MarketProfile profile, string securityId) { if (!profile.IsInitialBalanceSet) return "IB Forming"; if (!_stateManager.InitialBalanceState.ContainsKey(securityId)) _stateManager.InitialBalanceState[securityId] = (false, false); var (isBreakout, isBreakdown) = _stateManager.InitialBalanceState[securityId]; if (ltp > profile.InitialBalanceHigh && !isBreakout) { _stateManager.InitialBalanceState[securityId] = (true, false); return "IB Breakout"; } if (ltp < profile.InitialBalanceLow && !isBreakdown) { _stateManager.InitialBalanceState[securityId] = (false, true); return "IB Breakdown"; } if (ltp > profile.InitialBalanceHigh && isBreakout) return "IB Extension Up"; if (ltp < profile.InitialBalanceLow && isBreakdown) return "IB Extension Down"; return "Inside IB"; }
         private string AnalyzePriceRelativeToYesterdayProfile(decimal ltp, MarketProfileData? previousDay) { if (previousDay == null || ltp == 0) return "N/A"; if (ltp > previousDay.TpoLevelsInfo.ValueAreaHigh) return "Trading Above Y-VAH"; if (ltp < previousDay.TpoLevelsInfo.ValueAreaLow) return "Trading Below Y-VAL"; return "Trading Inside Y-Value"; }
 
-        /// <summary>
-        /// --- NEW IMPLEMENTATION ---
-        /// Replaces the placeholder "Neutral" with a meaningful calculation based on the
-        /// futures basis (premium/discount) and volume.
-        /// </summary>
         private string RunTier1InstitutionalIntentAnalysis(DashboardInstrument spotIndex)
         {
-            var future = _stateManager.AnalysisResults.Values.FirstOrDefault(r => r.InstrumentGroup == "FUTIDX" && r.Symbol.Contains(spotIndex.Symbol));
+            string futureUnderlyingSymbol = spotIndex.Symbol switch
+            {
+                "Nifty 50" => "NIFTY",
+                "Nifty Bank" => "BANKNIFTY",
+                "Sensex" => "SENSEX",
+                _ => spotIndex.Symbol
+            };
+
+            var future = _stateManager.AnalysisResults.Values.FirstOrDefault(r => r.InstrumentGroup == "FUTIDX" && r.UnderlyingGroup == futureUnderlyingSymbol);
             if (future == null) return "Neutral (Future not tracked)";
 
             var futureCandles = _stateManager.GetCandles(future.SecurityId, TimeSpan.FromMinutes(5));
@@ -442,7 +445,40 @@ namespace TradingConsole.Wpf.Services
 
         public void RunDailyBiasAnalysis(DashboardInstrument instrument, AnalysisResult result) { var profiles = _stateManager.HistoricalMarketProfiles.GetValueOrDefault(instrument.SecurityId); if (profiles == null || profiles.Count < 3) { result.DailyBias = "Insufficient History"; result.MarketStructure = "Unknown"; return; } var sortedProfiles = profiles.OrderByDescending(p => p.Date).ToList(); var p1 = sortedProfiles[0]; var p2 = sortedProfiles[1]; var p3 = sortedProfiles[2]; bool isP1Higher = p1.TpoLevelsInfo.ValueAreaLow > p2.TpoLevelsInfo.ValueAreaHigh; bool isP2Higher = p2.TpoLevelsInfo.ValueAreaLow > p3.TpoLevelsInfo.ValueAreaHigh; bool isP1OverlapHigher = p1.TpoLevelsInfo.PointOfControl > p2.TpoLevelsInfo.ValueAreaHigh; bool isP2OverlapHigher = p2.TpoLevelsInfo.PointOfControl > p3.TpoLevelsInfo.ValueAreaHigh; if ((isP1Higher && isP2Higher) || (isP1OverlapHigher && isP2OverlapHigher)) { result.MarketStructure = "Trending Up"; result.DailyBias = "Bullish"; return; } bool isP1Lower = p1.TpoLevelsInfo.ValueAreaHigh < p2.TpoLevelsInfo.ValueAreaLow; bool isP2Lower = p2.TpoLevelsInfo.ValueAreaHigh < p3.TpoLevelsInfo.ValueAreaLow; bool isP1OverlapLower = p1.TpoLevelsInfo.PointOfControl < p2.TpoLevelsInfo.ValueAreaLow; bool isP2OverlapLower = p2.TpoLevelsInfo.PointOfControl < p3.TpoLevelsInfo.ValueAreaLow; if ((isP1Lower && isP2Lower) || (isP1OverlapLower && isP2OverlapLower)) { result.MarketStructure = "Trending Down"; result.DailyBias = "Bearish"; return; } result.MarketStructure = "Balancing"; result.DailyBias = "Neutral / Rotational"; }
         public decimal GetTickSize(DashboardInstrument? instrument) => (instrument?.InstrumentType == "INDEX") ? 1.0m : 0.05m;
-        private string GetHistoricalIvKey(DashboardInstrument instrument, decimal underlyingPrice) { return $"{instrument.UnderlyingSymbol}_ATM_CE"; }
+
+        /// <summary>
+        /// --- BUG FIX ---
+        /// The original logic was too simplistic and could misidentify OTM options as ATM.
+        /// This version validates that the option's strike is actually close to the underlying price.
+        /// </summary>
+        private string GetHistoricalIvKey(DashboardInstrument instrument, decimal underlyingPrice)
+        {
+            if (underlyingPrice <= 0) return string.Empty;
+
+            // Define ATM as being within 2 strike price steps of the underlying price.
+            decimal strikeStep = GetStrikePriceStep(instrument.UnderlyingSymbol);
+            decimal atmThreshold = strikeStep * 2;
+
+            if (Math.Abs(instrument.StrikePrice - underlyingPrice) <= atmThreshold)
+            {
+                // Only return a key if the option is genuinely ATM.
+                return $"{instrument.UnderlyingSymbol}_ATM_{instrument.OptionType}";
+            }
+
+            return string.Empty; // Return nothing if it's not an ATM option.
+        }
+
+        private int GetStrikePriceStep(string underlyingSymbol)
+        {
+            string upperSymbol = underlyingSymbol.ToUpperInvariant();
+            if (upperSymbol.Contains("SENSEX") || upperSymbol.Contains("BANKNIFTY"))
+            {
+                return 100;
+            }
+            return 50; // Default for NIFTY
+        }
+
+
         private (decimal ivRank, decimal ivPercentile) CalculateIvRankAndPercentile(decimal currentIv, string key, IntradayIvState ivState) { var (histHigh, histLow) = _historicalIvService.Get90DayIvRange(key); if (histHigh == 0 || histLow == 0) return (0m, 0m); decimal histRange = histHigh - histLow; decimal ivRank = (histRange > 0) ? ((currentIv - histLow) / histRange) * 100 : 0m; return (Math.Max(0, Math.Min(100, Math.Round(ivRank, 2))), 0m); }
         private string GenerateVolatilityStateSignal(DashboardInstrument instrument, AnalysisResult result) { bool isAtrContracting = result.AtrSignal5Min == "Vol Contracting"; bool isIvRankLow = result.IvRank < 30; if (isAtrContracting && isIvRankLow) { _stateManager.IsInVolatilitySqueeze[instrument.SecurityId] = true; return "IV Squeeze Setup"; } return "Normal Volatility"; }
 
