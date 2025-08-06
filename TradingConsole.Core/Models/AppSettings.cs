@@ -44,6 +44,10 @@ namespace TradingConsole.Core.Models
         public ObservableCollection<SignalDriver> RangeBoundBearishDrivers { get; set; }
         public ObservableCollection<SignalDriver> VolatileBullishDrivers { get; set; }
         public ObservableCollection<SignalDriver> VolatileBearishDrivers { get; set; }
+        // --- ADDED: New collections for the Breakout Playbook ---
+        public ObservableCollection<SignalDriver> BreakoutBullishDrivers { get; set; }
+        public ObservableCollection<SignalDriver> BreakoutBearishDrivers { get; set; }
+
 
         public StrategySettings()
         {
@@ -64,16 +68,16 @@ namespace TradingConsole.Core.Models
 
             TrendingBearDrivers = new ObservableCollection<SignalDriver>
             {
-                new SignalDriver("Confluence Momentum (Bearish)", 10),
-                new SignalDriver("Option Breakout Setup (Bearish)", 8),
-                new SignalDriver("True Acceptance Below Y-VAL", 5),
-                new SignalDriver("Institutional Intent is Bearish", 4),
-                new SignalDriver("5m VWAP EMA confirms bearish trend", 3),
-                new SignalDriver("IB breakdown is extending", 3),
-                new SignalDriver("Bearish Pattern with Volume Confirmation", 3),
-                new SignalDriver("Price below VWAP", 2),
-                new SignalDriver("OI confirms new shorts", 2),
-                new SignalDriver("Initiative Selling Below Y-VAL", 2),
+                new SignalDriver("Confluence Momentum (Bearish)", -10),
+                new SignalDriver("Option Breakout Setup (Bearish)", -8),
+                new SignalDriver("True Acceptance Below Y-VAL", -5),
+                new SignalDriver("Institutional Intent is Bearish", -4),
+                new SignalDriver("5m VWAP EMA confirms bearish trend", -3),
+                new SignalDriver("IB breakdown is extending", -3),
+                new SignalDriver("Bearish Pattern with Volume Confirmation", -3),
+                new SignalDriver("Price below VWAP", -2),
+                new SignalDriver("OI confirms new shorts", -2),
+                new SignalDriver("Initiative Selling Below Y-VAL", -2),
                 new SignalDriver("High OTM Put Gamma", -2)
             };
 
@@ -88,12 +92,12 @@ namespace TradingConsole.Core.Models
 
             RangeBoundBearishDrivers = new ObservableCollection<SignalDriver>
             {
-                new SignalDriver("Bearish Pattern at Key Resistance", 4),
-                new SignalDriver("Bearish Skew Divergence (Full)", 3),
-                new SignalDriver("Bearish OBV Div at range high", 3),
-                new SignalDriver("Range Contraction", 2),
-                new SignalDriver("Bearish RSI Div at range high", 2),
-                new SignalDriver("Low volume suggests exhaustion (Bearish)", 1),
+                new SignalDriver("Bearish Pattern at Key Resistance", -4),
+                new SignalDriver("Bearish Skew Divergence (Full)", -3),
+                new SignalDriver("Bearish OBV Div at range high", -3),
+                new SignalDriver("Range Contraction", -2),
+                new SignalDriver("Bearish RSI Div at range high", -2),
+                new SignalDriver("Low volume suggests exhaustion (Bearish)", -1),
             };
 
             VolatileBullishDrivers = new ObservableCollection<SignalDriver>
@@ -105,9 +109,26 @@ namespace TradingConsole.Core.Models
 
             VolatileBearishDrivers = new ObservableCollection<SignalDriver>
             {
-                new SignalDriver("Look Above and Fail at Y-VAH", 5),
-                new SignalDriver("Bearish Skew Divergence (Full)", 4),
-                new SignalDriver("Bearish Pattern at Key Resistance", 3),
+                new SignalDriver("Look Above and Fail at Y-VAH", -5),
+                new SignalDriver("Bearish Skew Divergence (Full)", -4),
+                new SignalDriver("Bearish Pattern at Key Resistance", -3),
+            };
+
+            // --- ADDED: Initialization of the new Breakout drivers ---
+            BreakoutBullishDrivers = new ObservableCollection<SignalDriver>
+            {
+                new SignalDriver("Volume Burst on Breakout", 5),
+                new SignalDriver("IB breakout is extending", 4),
+                new SignalDriver("Confluence Momentum (Bullish)", 3),
+                new SignalDriver("OI confirms new longs", 2),
+            };
+
+            BreakoutBearishDrivers = new ObservableCollection<SignalDriver>
+            {
+                new SignalDriver("Volume Burst on Breakdown", -5),
+                new SignalDriver("IB breakdown is extending", -4),
+                new SignalDriver("Confluence Momentum (Bearish)", -3),
+                new SignalDriver("OI confirms new shorts", -2),
             };
         }
     }

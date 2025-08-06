@@ -262,6 +262,9 @@ namespace TradingConsole.Wpf.ViewModels
             MergeDriverCollection(loadedStrategy.RangeBoundBearishDrivers, defaultStrategy.RangeBoundBearishDrivers);
             MergeDriverCollection(loadedStrategy.VolatileBullishDrivers, defaultStrategy.VolatileBullishDrivers);
             MergeDriverCollection(loadedStrategy.VolatileBearishDrivers, defaultStrategy.VolatileBearishDrivers);
+            // --- ADDED: Merge the new breakout drivers to ensure they appear for existing users ---
+            MergeDriverCollection(loadedStrategy.BreakoutBullishDrivers, defaultStrategy.BreakoutBullishDrivers);
+            MergeDriverCollection(loadedStrategy.BreakoutBearishDrivers, defaultStrategy.BreakoutBearishDrivers);
         }
 
         private void MergeDriverCollection(ObservableCollection<SignalDriver> loadedDrivers, ObservableCollection<SignalDriver> defaultDrivers)

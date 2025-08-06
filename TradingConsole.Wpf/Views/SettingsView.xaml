@@ -447,6 +447,49 @@
                                     </StackPanel>
                                 </ScrollViewer>
                             </TabItem>
+                            <!-- FIXED: Corrected the invalid XML comment -->
+                            <!-- ADDED: New TabItem for the Breakout drivers -->
+                            <TabItem Header="Breakout">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="600">
+                                    <StackPanel>
+                                        <TextBlock Text="Bullish Breakout Drivers" FontWeight="Bold" Margin="5" />
+                                        <ItemsControl ItemsSource="{Binding BreakoutBullishDrivers}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="2">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding Name}" FontWeight="Normal" TextWrapping="Wrap"/>
+                                                        <TextBox Grid.Column="1" Text="{Binding Weight, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="5,0" />
+                                                        <CheckBox Grid.Column="2" IsChecked="{Binding IsEnabled}" Content="Enabled" FontWeight="Normal" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <Separator Margin="5,10"/>
+                                        <TextBlock Text="Bearish Breakdown Drivers" FontWeight="Bold" Margin="5" />
+                                        <ItemsControl ItemsSource="{Binding BreakoutBearishDrivers}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="2">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding Name}" FontWeight="Normal" TextWrapping="Wrap"/>
+                                                        <TextBox Grid.Column="1" Text="{Binding Weight, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="5,0" />
+                                                        <CheckBox Grid.Column="2" IsChecked="{Binding IsEnabled}" Content="Enabled" FontWeight="Normal" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </TabItem>
                             <TabItem Header="Volatile">
                                 <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="600">
                                     <StackPanel>

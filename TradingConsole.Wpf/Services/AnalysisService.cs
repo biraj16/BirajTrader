@@ -15,7 +15,8 @@ using TradingConsole.Wpf.ViewModels;
 
 namespace TradingConsole.Wpf.Services
 {
-    public enum MarketThesis { Bullish_Trend, Bullish_Rotation, Bullish_Reversal_Attempt, Bearish_Trend, Bearish_Rotation, Bearish_Reversal_Attempt, Balancing, Indeterminate, Choppy }
+    // --- MODIFIED: Added Bullish_Breakout_Attempt and Bearish_Breakdown_Attempt ---
+    public enum MarketThesis { Bullish_Trend, Bullish_Rotation, Bullish_Reversal_Attempt, Bullish_Breakout_Attempt, Bearish_Trend, Bearish_Rotation, Bearish_Reversal_Attempt, Bearish_Breakdown_Attempt, Balancing, Indeterminate, Choppy }
     public enum DominantPlayer { Buyers, Sellers, Balance, Indeterminate }
 
     public class AnalysisService : INotifyPropertyChanged
