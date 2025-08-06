@@ -250,15 +250,9 @@ namespace TradingConsole.Wpf.Services
             result.MarketProfileSignal = "Trading Inside Y-Value";
         }
 
-        /// <summary>
-        /// --- BUG FIX & ENHANCEMENT ---
-        /// The original logic was too noisy, comparing only the last two candles.
-        /// This revised logic analyzes the trend over a configurable lookback period (default 5 candles)
-        /// for a much more robust and meaningful signal.
-        /// </summary>
         private string CalculateOiSignal(List<Candle> candles)
         {
-            const int lookbackPeriod = 5; // Look back over the last 5 (x 3-min) = 15 minutes of data.
+            const int lookbackPeriod = 5;
             if (candles.Count < lookbackPeriod) return "Building History...";
 
             var relevantCandles = candles.TakeLast(lookbackPeriod).ToList();
@@ -342,8 +336,67 @@ namespace TradingConsole.Wpf.Services
 
         private (string, long, long) CalculateVolumeSignal(List<Candle> candles) { if (!candles.Any()) return ("N/A", 0, 0); long currentCandleVolume = candles.Last().Volume; if (candles.Count < 2) return ("Building History...", currentCandleVolume, 0); var historyCandles = candles.Take(candles.Count - 1).ToList(); if (historyCandles.Count > _settingsViewModel.VolumeHistoryLength) { historyCandles = historyCandles.Skip(historyCandles.Count - _settingsViewModel.VolumeHistoryLength).ToList(); } if (!historyCandles.Any()) return ("Building History...", currentCandleVolume, 0); double averageVolume = historyCandles.Average(c => (double)c.Volume); if (averageVolume > 0 && currentCandleVolume > (averageVolume * _settingsViewModel.VolumeBurstMultiplier)) { return ("Volume Burst", currentCandleVolume, (long)averageVolume); } return ("Neutral", currentCandleVolume, (long)averageVolume); }
         private (string priceVsVwap, string priceVsClose, string dayRange) CalculatePriceActionSignals(DashboardInstrument instrument, decimal vwap) { string priceVsVwap = (vwap > 0) ? (instrument.LTP > vwap ? "Above VWAP" : "Below VWAP") : "Neutral"; string priceVsClose = (instrument.Close > 0) ? (instrument.LTP > instrument.Close ? "Above Close" : "Below Close") : "Neutral"; string dayRange = "Mid-Range"; decimal range = instrument.High - instrument.Low; if (range > 0) { decimal position = (instrument.LTP - instrument.Low) / range; if (position > 0.8m) dayRange = "Near High"; else if (position < 0.2m) dayRange = "Near Low"; } return (priceVsVwap, priceVsClose, dayRange); }
-        private string RecognizeCandlestickPattern(List<Candle> candles, AnalysisResult analysisResult) { if (candles.Count < 3) return "N/A"; string pattern = IdentifyCandlePattern(candles); if (pattern == "N/A") return "N/A"; string context = GetPatternContext(analysisResult); string volumeInfo = GetVolumeConfirmation(candles.Last(), candles[^2]); return $"{pattern}{context}{volumeInfo}"; }
-        private string IdentifyCandlePattern(List<Candle> candles) { var c1 = candles.Last(); var c2 = candles[^2]; var c3 = candles[^3]; decimal body1 = Math.Abs(c1.Open - c1.Close); decimal range1 = c1.High - c1.Low; if (range1 == 0) return "N/A"; decimal upperShadow1 = c1.High - Math.Max(c1.Open, c1.Close); decimal lowerShadow1 = Math.Min(c1.Open, c1.Close) - c1.Low; if (body1 / range1 < 0.15m) return "Neutral Doji"; if (lowerShadow1 > body1 * 1.8m && upperShadow1 < body1 * 0.9m) return c1.Close > c1.Open ? "Bullish Hammer" : "Bearish Hanging Man"; if (upperShadow1 > body1 * 1.8m && lowerShadow1 < body1 * 0.9m) return c1.Close > c1.Open ? "Bullish Inv Hammer" : "Bearish Shooting Star"; if (body1 / range1 > 0.85m) return c1.Close > c1.Open ? "Bullish Marubozu" : "Bearish Marubozu"; if (c1.Close > c2.Open && c1.Open < c2.Close && c1.Close > c1.Open && c2.Close < c2.Open) return "Bullish Engulfing"; if (c1.Open > c2.Close && c1.Close < c2.Open && c1.Close < c1.Open && c2.Close > c2.Open) return "Bearish Engulfing"; decimal c2BodyMidpoint = c2.Open + (c2.Close - c2.Open) / 2; if (c2.Close < c2.Open && c1.Open < c2.Low && c1.Close > c2BodyMidpoint && c1.Close < c2.Open) return "Bullish Piercing Line"; if (c2.Close > c2.Open && c1.Open > c2.High && c1.Close < c2BodyMidpoint && c1.Close > c2.Open) return "Bearish Dark Cloud Cover"; bool isMorningStar = c3.Close < c3.Open && Math.Max(c2.Open, c2.Close) < c3.Close && c1.Close > c1.Open && c1.Close > (c3.Open + c3.Close) / 2; if (isMorningStar) return "Bullish Morning Star"; bool isEveningStar = c3.Close > c3.Open && Math.Min(c2.Open, c2.Close) > c3.Close && c1.Close < c1.Open && c1.Close < (c3.Open + c3.Close) / 2; if (isEveningStar) return "Bearish Evening Star"; bool isThreeWhiteSoldiers = c3.Close > c3.Open && c2.Close > c2.Open && c1.Close > c1.Open && c2.Open > c3.Open && c2.Close > c3.Close && c1.Open > c2.Open && c1.Close > c2.Close; if (isThreeWhiteSoldiers) return "Three White Soldiers"; bool isThreeBlackCrows = c3.Close < c3.Open && c2.Close < c2.Open && c1.Close < c1.Open && c2.Open < c3.Open && c2.Close < c3.Close && c1.Open < c2.Open && c1.Close < c2.Close; if (isThreeBlackCrows) return "Three Black Crows"; return "N/A"; }
+
+        /// <summary>
+        /// --- ENHANCEMENT ---
+        /// This logic is now more robust. It identifies a potential pattern on the second-to-last candle
+        /// and then checks the most recent candle for confirmation. This reduces noise and false signals.
+        /// </summary>
+        private string RecognizeCandlestickPattern(List<Candle> candles, AnalysisResult analysisResult)
+        {
+            if (candles.Count < 3) return "N/A";
+
+            var confirmationCandle = candles.Last();
+            var patternCandle = candles[^2]; // The candle that forms the potential pattern
+            var priorCandle = candles[^3];
+
+            // --- Identify the potential pattern on the patternCandle ---
+            string potentialPattern = IdentifySingleCandlePattern(patternCandle, priorCandle);
+
+            if (potentialPattern == "N/A") return "N/A"; // No pattern to confirm
+
+            // --- Check for confirmation on the confirmationCandle ---
+            bool isConfirmed = false;
+            if (potentialPattern.Contains("Bullish"))
+            {
+                // Bullish confirmation: The next candle closes above the pattern candle's high.
+                isConfirmed = confirmationCandle.Close > patternCandle.High;
+            }
+            else if (potentialPattern.Contains("Bearish"))
+            {
+                // Bearish confirmation: The next candle closes below the pattern candle's low.
+                isConfirmed = confirmationCandle.Close < patternCandle.Low;
+            }
+
+            if (isConfirmed)
+            {
+                string context = GetPatternContext(analysisResult);
+                string volumeInfo = GetVolumeConfirmation(confirmationCandle, patternCandle);
+                return $"Confirmed {potentialPattern}{context}{volumeInfo}";
+            }
+
+            return "N/A"; // Pattern was not confirmed
+        }
+
+        private string IdentifySingleCandlePattern(Candle c1, Candle c2)
+        {
+            decimal body1 = Math.Abs(c1.Open - c1.Close);
+            decimal range1 = c1.High - c1.Low;
+            if (range1 == 0) return "N/A";
+
+            decimal upperShadow1 = c1.High - Math.Max(c1.Open, c1.Close);
+            decimal lowerShadow1 = Math.Min(c1.Open, c1.Close) - c1.Low;
+
+            if (body1 / range1 < 0.15m) return "Neutral Doji";
+            if (lowerShadow1 > body1 * 2.0m && upperShadow1 < body1 * 0.8m) return "Bullish Hammer";
+            if (upperShadow1 > body1 * 2.0m && lowerShadow1 < body1 * 0.8m) return "Bearish Shooting Star";
+            if (body1 / range1 > 0.85m) return c1.Close > c1.Open ? "Bullish Marubozu" : "Bearish Marubozu";
+            if (c1.Close > c2.Open && c1.Open < c2.Close && c1.Close > c1.Open && c2.Close < c2.Open) return "Bullish Engulfing";
+            if (c1.Open > c2.Close && c1.Close < c2.Open && c1.Close < c1.Open && c2.Close > c2.Open) return "Bearish Engulfing";
+
+            return "N/A";
+        }
+
         private string GetPatternContext(AnalysisResult analysisResult) { if (analysisResult.DayRangeSignal == "Near Low" || analysisResult.VwapBandSignal == "At Lower Band" || analysisResult.MarketProfileSignal.Contains("VAL")) { return " at Key Support"; } if (analysisResult.DayRangeSignal == "Near High" || analysisResult.VwapBandSignal == "At Upper Band" || analysisResult.MarketProfileSignal.Contains("VAH")) { return " at Key Resistance"; } return string.Empty; }
         private string GetVolumeConfirmation(Candle current, Candle previous) { if (previous.Volume > 0) { decimal volChange = ((decimal)current.Volume - previous.Volume) / previous.Volume; if (volChange > 0.5m) { return " (+Vol)"; } } return ""; }
         private string AnalyzeOpenType(DashboardInstrument instrument, List<Candle> oneMinCandles) { if (oneMinCandles.Count < 3) return "Analyzing Open..."; var firstCandle = oneMinCandles[0]; bool isFirstCandleStrong = Math.Abs(firstCandle.Close - firstCandle.Open) > (firstCandle.High - firstCandle.Low) * 0.7m; if (isFirstCandleStrong && firstCandle.Close > firstCandle.Open) return "Open-Drive (Bullish)"; if (isFirstCandleStrong && firstCandle.Close < firstCandle.Open) return "Open-Drive (Bearish)"; return "Open-Auction (Rotational)"; }
