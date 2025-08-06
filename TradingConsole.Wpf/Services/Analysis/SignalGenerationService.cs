@@ -388,7 +388,33 @@ namespace TradingConsole.Wpf.Services
             return "N/A";
         }
 
-        private string GetPatternContext(AnalysisResult analysisResult) { if (analysisResult.DayRangeSignal == "Near Low" || analysisResult.VwapBandSignal == "At Lower Band" || analysisResult.MarketProfileSignal.Contains("VAL")) { return " at Key Support"; } if (analysisResult.DayRangeSignal == "Near High" || analysisResult.VwapBandSignal == "At Upper Band" || analysisResult.MarketProfileSignal.Contains("VAH")) { return " at Key Resistance"; } return string.Empty; }
+        /// <summary>
+        /// --- ENHANCEMENT ---
+        /// This method now provides the richest possible context for a candlestick pattern by checking
+        /// against five different types of support/resistance levels: Day's Range, VWAP Bands,
+        /// Developing Value Area, Yesterday's Value Area, and the Initial Balance.
+        /// </summary>
+        private string GetPatternContext(AnalysisResult r)
+        {
+            bool atSupport = r.DayRangeSignal == "Near Low" ||
+                             r.VwapBandSignal == "At Lower Band" ||
+                             r.MarketProfileSignal.Contains("VAL") ||
+                             r.YesterdayProfileSignal.Contains("Y-VAL") ||
+                             r.InitialBalanceSignal.Contains("Low");
+
+            if (atSupport) return " at Key Support";
+
+            bool atResistance = r.DayRangeSignal == "Near High" ||
+                                r.VwapBandSignal == "At Upper Band" ||
+                                r.MarketProfileSignal.Contains("VAH") ||
+                                r.YesterdayProfileSignal.Contains("Y-VAH") ||
+                                r.InitialBalanceSignal.Contains("High");
+
+            if (atResistance) return " at Key Resistance";
+
+            return string.Empty;
+        }
+
         private string GetVolumeConfirmation(Candle current, Candle previous) { if (previous.Volume > 0) { decimal volChange = ((decimal)current.Volume - previous.Volume) / previous.Volume; if (volChange > 0.5m) { return " (+Vol)"; } } return ""; }
         private string AnalyzeOpenType(DashboardInstrument instrument, List<Candle> oneMinCandles) { if (oneMinCandles.Count < 3) return "Analyzing Open..."; var firstCandle = oneMinCandles[0]; bool isFirstCandleStrong = Math.Abs(firstCandle.Close - firstCandle.Open) > (firstCandle.High - firstCandle.Low) * 0.7m; if (isFirstCandleStrong && firstCandle.Close > firstCandle.Open) return "Open-Drive (Bullish)"; if (isFirstCandleStrong && firstCandle.Close < firstCandle.Open) return "Open-Drive (Bearish)"; return "Open-Auction (Rotational)"; }
         private (string, decimal, decimal) CalculateVwapBandSignal(decimal ltp, List<Candle> candles) { if (candles.Count < 2) return ("N/A", 0, 0); var vwap = candles.Last().Vwap; if (vwap == 0) return ("N/A", 0, 0); decimal sumOfSquares = candles.Sum(c => (c.Close - vwap) * (c.Close - vwap)); decimal stdDev = (decimal)Math.Sqrt((double)(sumOfSquares / candles.Count)); var upperBand = vwap + (stdDev * _settingsViewModel.VwapUpperBandMultiplier); var lowerBand = vwap - (stdDev * _settingsViewModel.VwapLowerBandMultiplier); string signal = "Inside Bands"; if (ltp > upperBand) signal = "Above Upper Band"; else if (ltp < lowerBand) signal = "Below Lower Band"; return (signal, upperBand, lowerBand); }
@@ -446,26 +472,19 @@ namespace TradingConsole.Wpf.Services
         public void RunDailyBiasAnalysis(DashboardInstrument instrument, AnalysisResult result) { var profiles = _stateManager.HistoricalMarketProfiles.GetValueOrDefault(instrument.SecurityId); if (profiles == null || profiles.Count < 3) { result.DailyBias = "Insufficient History"; result.MarketStructure = "Unknown"; return; } var sortedProfiles = profiles.OrderByDescending(p => p.Date).ToList(); var p1 = sortedProfiles[0]; var p2 = sortedProfiles[1]; var p3 = sortedProfiles[2]; bool isP1Higher = p1.TpoLevelsInfo.ValueAreaLow > p2.TpoLevelsInfo.ValueAreaHigh; bool isP2Higher = p2.TpoLevelsInfo.ValueAreaLow > p3.TpoLevelsInfo.ValueAreaHigh; bool isP1OverlapHigher = p1.TpoLevelsInfo.PointOfControl > p2.TpoLevelsInfo.ValueAreaHigh; bool isP2OverlapHigher = p2.TpoLevelsInfo.PointOfControl > p3.TpoLevelsInfo.ValueAreaHigh; if ((isP1Higher && isP2Higher) || (isP1OverlapHigher && isP2OverlapHigher)) { result.MarketStructure = "Trending Up"; result.DailyBias = "Bullish"; return; } bool isP1Lower = p1.TpoLevelsInfo.ValueAreaHigh < p2.TpoLevelsInfo.ValueAreaLow; bool isP2Lower = p2.TpoLevelsInfo.ValueAreaHigh < p3.TpoLevelsInfo.ValueAreaLow; bool isP1OverlapLower = p1.TpoLevelsInfo.PointOfControl < p2.TpoLevelsInfo.ValueAreaLow; bool isP2OverlapLower = p2.TpoLevelsInfo.PointOfControl < p3.TpoLevelsInfo.ValueAreaLow; if ((isP1Lower && isP2Lower) || (isP1OverlapLower && isP2OverlapLower)) { result.MarketStructure = "Trending Down"; result.DailyBias = "Bearish"; return; } result.MarketStructure = "Balancing"; result.DailyBias = "Neutral / Rotational"; }
         public decimal GetTickSize(DashboardInstrument? instrument) => (instrument?.InstrumentType == "INDEX") ? 1.0m : 0.05m;
 
-        /// <summary>
-        /// --- BUG FIX ---
-        /// The original logic was too simplistic and could misidentify OTM options as ATM.
-        /// This version validates that the option's strike is actually close to the underlying price.
-        /// </summary>
         private string GetHistoricalIvKey(DashboardInstrument instrument, decimal underlyingPrice)
         {
             if (underlyingPrice <= 0) return string.Empty;
 
-            // Define ATM as being within 2 strike price steps of the underlying price.
             decimal strikeStep = GetStrikePriceStep(instrument.UnderlyingSymbol);
             decimal atmThreshold = strikeStep * 2;
 
             if (Math.Abs(instrument.StrikePrice - underlyingPrice) <= atmThreshold)
             {
-                // Only return a key if the option is genuinely ATM.
                 return $"{instrument.UnderlyingSymbol}_ATM_{instrument.OptionType}";
             }
 
-            return string.Empty; // Return nothing if it's not an ATM option.
+            return string.Empty;
         }
 
         private int GetStrikePriceStep(string underlyingSymbol)
