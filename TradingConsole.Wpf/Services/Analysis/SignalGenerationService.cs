@@ -337,34 +337,25 @@ namespace TradingConsole.Wpf.Services
         private (string, long, long) CalculateVolumeSignal(List<Candle> candles) { if (!candles.Any()) return ("N/A", 0, 0); long currentCandleVolume = candles.Last().Volume; if (candles.Count < 2) return ("Building History...", currentCandleVolume, 0); var historyCandles = candles.Take(candles.Count - 1).ToList(); if (historyCandles.Count > _settingsViewModel.VolumeHistoryLength) { historyCandles = historyCandles.Skip(historyCandles.Count - _settingsViewModel.VolumeHistoryLength).ToList(); } if (!historyCandles.Any()) return ("Building History...", currentCandleVolume, 0); double averageVolume = historyCandles.Average(c => (double)c.Volume); if (averageVolume > 0 && currentCandleVolume > (averageVolume * _settingsViewModel.VolumeBurstMultiplier)) { return ("Volume Burst", currentCandleVolume, (long)averageVolume); } return ("Neutral", currentCandleVolume, (long)averageVolume); }
         private (string priceVsVwap, string priceVsClose, string dayRange) CalculatePriceActionSignals(DashboardInstrument instrument, decimal vwap) { string priceVsVwap = (vwap > 0) ? (instrument.LTP > vwap ? "Above VWAP" : "Below VWAP") : "Neutral"; string priceVsClose = (instrument.Close > 0) ? (instrument.LTP > instrument.Close ? "Above Close" : "Below Close") : "Neutral"; string dayRange = "Mid-Range"; decimal range = instrument.High - instrument.Low; if (range > 0) { decimal position = (instrument.LTP - instrument.Low) / range; if (position > 0.8m) dayRange = "Near High"; else if (position < 0.2m) dayRange = "Near Low"; } return (priceVsVwap, priceVsClose, dayRange); }
 
-        /// <summary>
-        /// --- ENHANCEMENT ---
-        /// This logic is now more robust. It identifies a potential pattern on the second-to-last candle
-        /// and then checks the most recent candle for confirmation. This reduces noise and false signals.
-        /// </summary>
         private string RecognizeCandlestickPattern(List<Candle> candles, AnalysisResult analysisResult)
         {
             if (candles.Count < 3) return "N/A";
 
             var confirmationCandle = candles.Last();
-            var patternCandle = candles[^2]; // The candle that forms the potential pattern
+            var patternCandle = candles[^2];
             var priorCandle = candles[^3];
 
-            // --- Identify the potential pattern on the patternCandle ---
             string potentialPattern = IdentifySingleCandlePattern(patternCandle, priorCandle);
 
-            if (potentialPattern == "N/A") return "N/A"; // No pattern to confirm
+            if (potentialPattern == "N/A") return "N/A";
 
-            // --- Check for confirmation on the confirmationCandle ---
             bool isConfirmed = false;
             if (potentialPattern.Contains("Bullish"))
             {
-                // Bullish confirmation: The next candle closes above the pattern candle's high.
                 isConfirmed = confirmationCandle.Close > patternCandle.High;
             }
             else if (potentialPattern.Contains("Bearish"))
             {
-                // Bearish confirmation: The next candle closes below the pattern candle's low.
                 isConfirmed = confirmationCandle.Close < patternCandle.Low;
             }
 
@@ -375,7 +366,7 @@ namespace TradingConsole.Wpf.Services
                 return $"Confirmed {potentialPattern}{context}{volumeInfo}";
             }
 
-            return "N/A"; // Pattern was not confirmed
+            return "N/A";
         }
 
         private string IdentifySingleCandlePattern(Candle c1, Candle c2)
@@ -404,7 +395,51 @@ namespace TradingConsole.Wpf.Services
         private decimal CalculateAnchoredVwap(List<Candle> candles) { if (candles == null || !candles.Any()) return 0; decimal cumulativePriceVolume = candles.Sum(c => c.Close * c.Volume); long cumulativeVolume = candles.Sum(c => c.Volume); return (cumulativeVolume > 0) ? cumulativePriceVolume / cumulativeVolume : 0; }
         private string GetInitialBalanceSignal(decimal ltp, MarketProfile profile, string securityId) { if (!profile.IsInitialBalanceSet) return "IB Forming"; if (!_stateManager.InitialBalanceState.ContainsKey(securityId)) _stateManager.InitialBalanceState[securityId] = (false, false); var (isBreakout, isBreakdown) = _stateManager.InitialBalanceState[securityId]; if (ltp > profile.InitialBalanceHigh && !isBreakout) { _stateManager.InitialBalanceState[securityId] = (true, false); return "IB Breakout"; } if (ltp < profile.InitialBalanceLow && !isBreakdown) { _stateManager.InitialBalanceState[securityId] = (false, true); return "IB Breakdown"; } if (ltp > profile.InitialBalanceHigh && isBreakout) return "IB Extension Up"; if (ltp < profile.InitialBalanceLow && isBreakdown) return "IB Extension Down"; return "Inside IB"; }
         private string AnalyzePriceRelativeToYesterdayProfile(decimal ltp, MarketProfileData? previousDay) { if (previousDay == null || ltp == 0) return "N/A"; if (ltp > previousDay.TpoLevelsInfo.ValueAreaHigh) return "Trading Above Y-VAH"; if (ltp < previousDay.TpoLevelsInfo.ValueAreaLow) return "Trading Below Y-VAL"; return "Trading Inside Y-Value"; }
-        private string RunTier1InstitutionalIntentAnalysis(DashboardInstrument spotIndex) { return "Neutral"; }
+
+        /// <summary>
+        /// --- NEW IMPLEMENTATION ---
+        /// Replaces the placeholder "Neutral" with a meaningful calculation based on the
+        /// futures basis (premium/discount) and volume.
+        /// </summary>
+        private string RunTier1InstitutionalIntentAnalysis(DashboardInstrument spotIndex)
+        {
+            var future = _stateManager.AnalysisResults.Values.FirstOrDefault(r => r.InstrumentGroup == "FUTIDX" && r.Symbol.Contains(spotIndex.Symbol));
+            if (future == null) return "Neutral (Future not tracked)";
+
+            var futureCandles = _stateManager.GetCandles(future.SecurityId, TimeSpan.FromMinutes(5));
+            var spotCandles = _stateManager.GetCandles(spotIndex.SecurityId, TimeSpan.FromMinutes(5));
+
+            if (futureCandles == null || spotCandles == null || futureCandles.Count < 2 || spotCandles.Count < 2)
+            {
+                return "Neutral (Building History)";
+            }
+
+            var lastFutureCandle = futureCandles.Last();
+            var lastSpotCandle = spotCandles.Last();
+
+            var prevFutureCandle = futureCandles[^2];
+            var prevSpotCandle = spotCandles[^2];
+
+            decimal currentBasis = lastFutureCandle.Close - lastSpotCandle.Close;
+            decimal previousBasis = prevFutureCandle.Close - prevSpotCandle.Close;
+
+            bool isVolumeHigh = lastFutureCandle.Volume > future.AvgVolume * 1.2m;
+
+            if (isVolumeHigh)
+            {
+                if (currentBasis > previousBasis && lastFutureCandle.Close > prevFutureCandle.Close)
+                {
+                    return "Bullish (Premium Expansion)";
+                }
+                if (currentBasis < previousBasis && lastFutureCandle.Close < prevFutureCandle.Close)
+                {
+                    return "Bearish (Discount Expansion)";
+                }
+            }
+
+            return "Neutral";
+        }
+
         public void RunDailyBiasAnalysis(DashboardInstrument instrument, AnalysisResult result) { var profiles = _stateManager.HistoricalMarketProfiles.GetValueOrDefault(instrument.SecurityId); if (profiles == null || profiles.Count < 3) { result.DailyBias = "Insufficient History"; result.MarketStructure = "Unknown"; return; } var sortedProfiles = profiles.OrderByDescending(p => p.Date).ToList(); var p1 = sortedProfiles[0]; var p2 = sortedProfiles[1]; var p3 = sortedProfiles[2]; bool isP1Higher = p1.TpoLevelsInfo.ValueAreaLow > p2.TpoLevelsInfo.ValueAreaHigh; bool isP2Higher = p2.TpoLevelsInfo.ValueAreaLow > p3.TpoLevelsInfo.ValueAreaHigh; bool isP1OverlapHigher = p1.TpoLevelsInfo.PointOfControl > p2.TpoLevelsInfo.ValueAreaHigh; bool isP2OverlapHigher = p2.TpoLevelsInfo.PointOfControl > p3.TpoLevelsInfo.ValueAreaHigh; if ((isP1Higher && isP2Higher) || (isP1OverlapHigher && isP2OverlapHigher)) { result.MarketStructure = "Trending Up"; result.DailyBias = "Bullish"; return; } bool isP1Lower = p1.TpoLevelsInfo.ValueAreaHigh < p2.TpoLevelsInfo.ValueAreaLow; bool isP2Lower = p2.TpoLevelsInfo.ValueAreaHigh < p3.TpoLevelsInfo.ValueAreaLow; bool isP1OverlapLower = p1.TpoLevelsInfo.PointOfControl < p2.TpoLevelsInfo.ValueAreaLow; bool isP2OverlapLower = p2.TpoLevelsInfo.PointOfControl < p3.TpoLevelsInfo.ValueAreaLow; if ((isP1Lower && isP2Lower) || (isP1OverlapLower && isP2OverlapLower)) { result.MarketStructure = "Trending Down"; result.DailyBias = "Bearish"; return; } result.MarketStructure = "Balancing"; result.DailyBias = "Neutral / Rotational"; }
         public decimal GetTickSize(DashboardInstrument? instrument) => (instrument?.InstrumentType == "INDEX") ? 1.0m : 0.05m;
         private string GetHistoricalIvKey(DashboardInstrument instrument, decimal underlyingPrice) { return $"{instrument.UnderlyingSymbol}_ATM_CE"; }
