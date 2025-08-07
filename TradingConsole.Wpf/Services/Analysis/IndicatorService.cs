@@ -1,5 +1,5 @@
 ﻿// TradingConsole.Wpf/Services/Analysis/IndicatorService.cs
-// --- MODIFIED: Added RSI Divergence detection logic ---
+// --- MODIFIED: Added RSI and OBV Divergence detection logic ---
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -53,9 +53,6 @@ namespace TradingConsole.Wpf.Services
             return Math.Round(rsi, 2);
         }
 
-        /// <summary>
-        /// --- NEW: Detects bullish or bearish divergence between price and RSI ---
-        /// </summary>
         public string DetectRsiDivergence(List<Candle> candles, RsiState state, int lookbackPeriod)
         {
             if (candles.Count < lookbackPeriod || state.RsiValues.Count < lookbackPeriod)
@@ -66,16 +63,13 @@ namespace TradingConsole.Wpf.Services
             var recentCandles = candles.TakeLast(lookbackPeriod).ToList();
             var recentRsi = state.RsiValues.TakeLast(lookbackPeriod).ToList();
 
-            // Find the lowest low in price and its index
             decimal lowestPrice = recentCandles.Min(c => c.Low);
             int lowestPriceIndex = recentCandles.FindLastIndex(c => c.Low == lowestPrice);
 
-            // Find the highest high in price and its index
             decimal highestPrice = recentCandles.Max(c => c.High);
             int highestPriceIndex = recentCandles.FindLastIndex(c => c.High == highestPrice);
 
-            // Check for Bullish Divergence (Lower Low in Price, Higher Low in RSI)
-            if (lowestPriceIndex == lookbackPeriod - 1) // The most recent candle is part of the new low
+            if (lowestPriceIndex == lookbackPeriod - 1)
             {
                 var previousCandles = recentCandles.Take(lowestPriceIndex).ToList();
                 if (previousCandles.Any())
@@ -83,7 +77,7 @@ namespace TradingConsole.Wpf.Services
                     decimal previousLowPrice = previousCandles.Min(c => c.Low);
                     int previousLowPriceIndex = previousCandles.FindLastIndex(c => c.Low == previousLowPrice);
 
-                    if (lowestPrice < previousLowPrice) // Confirmed lower low in price
+                    if (lowestPrice < previousLowPrice)
                     {
                         decimal rsiAtCurrentLow = recentRsi[lowestPriceIndex];
                         decimal rsiAtPreviousLow = recentRsi[previousLowPriceIndex];
@@ -96,8 +90,7 @@ namespace TradingConsole.Wpf.Services
                 }
             }
 
-            // Check for Bearish Divergence (Higher High in Price, Lower High in RSI)
-            if (highestPriceIndex == lookbackPeriod - 1) // The most recent candle is part of the new high
+            if (highestPriceIndex == lookbackPeriod - 1)
             {
                 var previousCandles = recentCandles.Take(highestPriceIndex).ToList();
                 if (previousCandles.Any())
@@ -105,12 +98,76 @@ namespace TradingConsole.Wpf.Services
                     decimal previousHighPrice = previousCandles.Max(c => c.High);
                     int previousHighPriceIndex = previousCandles.FindLastIndex(c => c.High == previousHighPrice);
 
-                    if (highestPrice > previousHighPrice) // Confirmed higher high in price
+                    if (highestPrice > previousHighPrice)
                     {
                         decimal rsiAtCurrentHigh = recentRsi[highestPriceIndex];
                         decimal rsiAtPreviousHigh = recentRsi[previousHighPriceIndex];
 
                         if (rsiAtCurrentHigh < rsiAtPreviousHigh)
+                        {
+                            return "Bearish Divergence";
+                        }
+                    }
+                }
+            }
+
+            return "No Divergence";
+        }
+
+        /// <summary>
+        /// --- NEW: Detects bullish or bearish divergence between price and OBV ---
+        /// </summary>
+        public string DetectObvDivergence(List<Candle> candles, ObvState state, int lookbackPeriod)
+        {
+            if (candles.Count < lookbackPeriod || state.ObvValues.Count < lookbackPeriod)
+            {
+                return "N/A";
+            }
+
+            var recentCandles = candles.TakeLast(lookbackPeriod).ToList();
+            var recentObv = state.ObvValues.TakeLast(lookbackPeriod).ToList();
+
+            decimal lowestPrice = recentCandles.Min(c => c.Low);
+            int lowestPriceIndex = recentCandles.FindLastIndex(c => c.Low == lowestPrice);
+
+            decimal highestPrice = recentCandles.Max(c => c.High);
+            int highestPriceIndex = recentCandles.FindLastIndex(c => c.High == highestPrice);
+
+            if (lowestPriceIndex == lookbackPeriod - 1)
+            {
+                var previousCandles = recentCandles.Take(lowestPriceIndex).ToList();
+                if (previousCandles.Any())
+                {
+                    decimal previousLowPrice = previousCandles.Min(c => c.Low);
+                    int previousLowPriceIndex = previousCandles.FindLastIndex(c => c.Low == previousLowPrice);
+
+                    if (lowestPrice < previousLowPrice)
+                    {
+                        decimal obvAtCurrentLow = recentObv[lowestPriceIndex];
+                        decimal obvAtPreviousLow = recentObv[previousLowPriceIndex];
+
+                        if (obvAtCurrentLow > obvAtPreviousLow)
+                        {
+                            return "Bullish Divergence";
+                        }
+                    }
+                }
+            }
+
+            if (highestPriceIndex == lookbackPeriod - 1)
+            {
+                var previousCandles = recentCandles.Take(highestPriceIndex).ToList();
+                if (previousCandles.Any())
+                {
+                    decimal previousHighPrice = previousCandles.Max(c => c.High);
+                    int previousHighPriceIndex = previousCandles.FindLastIndex(c => c.High == previousHighPrice);
+
+                    if (highestPrice > previousHighPrice)
+                    {
+                        decimal obvAtCurrentHigh = recentObv[highestPriceIndex];
+                        decimal obvAtPreviousHigh = recentObv[previousHighPriceIndex];
+
+                        if (obvAtCurrentHigh < obvAtPreviousHigh)
                         {
                             return "Bearish Divergence";
                         }

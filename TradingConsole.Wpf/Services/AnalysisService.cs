@@ -155,11 +155,26 @@ namespace TradingConsole.Wpf.Services
 
         #region Boilerplate and other methods
         private bool IsMarketOpen() { try { var istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"); var istNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, istZone); if (istNow.DayOfWeek == DayOfWeek.Saturday || istNow.DayOfWeek == DayOfWeek.Sunday) return false; if (_settingsViewModel.MarketHolidays.Contains(istNow.Date)) return false; var marketOpen = new TimeSpan(9, 15, 0); var marketClose = new TimeSpan(15, 30, 0); if (istNow.TimeOfDay < marketOpen || istNow.TimeOfDay > marketClose) return false; return true; } catch (TimeZoneNotFoundException) { Debug.WriteLine("WARNING: India Standard Time zone not found."); var now = DateTime.UtcNow; if (now.DayOfWeek == DayOfWeek.Saturday || now.DayOfWeek == DayOfWeek.Sunday) return false; return true; } }
-        private void InitializeNewInstrument(DashboardInstrument instrument) { _stateManager.InitializeStateForInstrument(instrument.SecurityId, instrument.DisplayName, instrument.InstrumentType); _stateManager.HistoricalMarketProfiles[instrument.SecurityId] = _marketProfileService.GetHistoricalProfiles(instrument.SecurityId); if (!_stateManager.MarketProfiles.ContainsKey(instrument.SecurityId)) { decimal tickSize = _signalGenerationService.GetTickSize(instrument); var startTime = DateTime.Today.Add(new TimeSpan(9, 15, 0)); _stateManager.MarketProfiles[instrument.SecurityId] = new MarketProfile(tickSize, startTime); } LoadIndicatorStateFromStorage(instrument.SecurityId); Task.Run(() => BackfillAndSavePreviousDayProfileAsync(instrument)); Task.Run(() => BackfillCurrentDayCandlesAsync(instrument)); RunDailyBiasAnalysis(instrument); }
+
+        private void InitializeNewInstrument(DashboardInstrument instrument)
+        {
+            _stateManager.InitializeStateForInstrument(instrument.SecurityId, instrument.DisplayName, instrument.InstrumentType, instrument.UnderlyingSymbol);
+            _stateManager.HistoricalMarketProfiles[instrument.SecurityId] = _marketProfileService.GetHistoricalProfiles(instrument.SecurityId);
+            if (!_stateManager.MarketProfiles.ContainsKey(instrument.SecurityId))
+            {
+                decimal tickSize = _signalGenerationService.GetTickSize(instrument);
+                var startTime = DateTime.Today.Add(new TimeSpan(9, 15, 0));
+                _stateManager.MarketProfiles[instrument.SecurityId] = new MarketProfile(tickSize, startTime);
+            }
+            LoadIndicatorStateFromStorage(instrument.SecurityId);
+            Task.Run(() => BackfillAndSavePreviousDayProfileAsync(instrument));
+            Task.Run(() => BackfillCurrentDayCandlesAsync(instrument));
+            RunDailyBiasAnalysis(instrument);
+        }
+
         public List<Candle>? GetCandles(string securityId, TimeSpan timeframe) => _stateManager.GetCandles(securityId, timeframe);
         public void SetNearestExpiryDates(Dictionary<string, string> expiryDates) { foreach (var kvp in expiryDates) { if (DateTime.TryParse(kvp.Value, out var date)) { _nearestExpiryDates[kvp.Key] = date.Date; } } }
 
-        // --- BUG FIX: Removed IsMarketOpen() check to ensure data is always saved on application exit ---
         public void SaveIndicatorStates()
         {
             var timeframes = new[] { TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(15) };
@@ -185,7 +200,6 @@ namespace TradingConsole.Wpf.Services
             _indicatorStateService.SaveDatabase();
         }
 
-        // --- BUG FIX: Removed IsMarketOpen() check to ensure data is always saved on application exit ---
         public void SaveMarketProfileDatabase()
         {
             _marketProfileService.SaveDatabase();
@@ -193,46 +207,110 @@ namespace TradingConsole.Wpf.Services
 
         private void RunDailyBiasAnalysis(DashboardInstrument instrument) { var result = _stateManager.GetResult(instrument.SecurityId); _signalGenerationService.RunDailyBiasAnalysis(instrument, result); OnAnalysisUpdated?.Invoke(result); }
         private async Task BackfillCurrentDayCandlesAsync(DashboardInstrument instrument) { if (!IsMarketOpen()) return; var istNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("India Standard Time")); if (istNow.TimeOfDay < new TimeSpan(9, 15, 0)) return; try { var priceScripInfo = _scripMasterService.FindBySecurityId(instrument.SecurityId); if (priceScripInfo == null) return; var historicalData = await _apiClient.GetIntradayHistoricalDataAsync(priceScripInfo, "1", istNow.Date); if (historicalData?.Open == null || !historicalData.Open.Any()) return; var candles = new List<Candle>(); for (int i = 0; i < historicalData.Open.Count; i++) { var candle = new Candle { Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)historicalData.StartTime[i]).UtcDateTime, Open = historicalData.Open[i], High = historicalData.High[i], Low = historicalData.Low[i], Close = historicalData.Close[i], Volume = (long)historicalData.Volume[i], OpenInterest = (long)historicalData.OpenInterest[i] }; candles.Add(candle); } var timeframes = new[] { TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(3), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(15) }; foreach (var timeframe in timeframes) { _stateManager.MultiTimeframeCandles[instrument.SecurityId][timeframe] = AggregateHistoricalCandles(candles, timeframe); _indicatorService.WarmupIndicators(instrument.SecurityId, timeframe, _settingsViewModel.ShortEmaLength, _settingsViewModel.LongEmaLength); } } catch (Exception ex) { Debug.WriteLine($"[BackfillCurrentDay] ERROR: {ex.Message}"); } }
-        private async Task BackfillAndSavePreviousDayProfileAsync(DashboardInstrument instrument) { if (instrument.InstrumentType != "INDEX" && instrument.InstrumentType != "FUTIDX") return; var istNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("India Standard Time")); DateTime dateToFetch = GetPreviousTradingDay(istNow); if (_stateManager.HistoricalMarketProfiles.GetValueOrDefault(instrument.SecurityId)?.Any(p => p.Date.Date == dateToFetch.Date) == true) return; try { var priceScripInfo = _scripMasterService.FindBySecurityId(instrument.SecurityId); if (priceScripInfo == null) return; var historicalData = await _apiClient.GetIntradayHistoricalDataAsync(priceScripInfo, "1", dateToFetch); if (historicalData?.Open == null || !historicalData.Open.Any()) return; decimal tickSize = _signalGenerationService.GetTickSize(instrument); var sessionStartTime = dateToFetch.Date.Add(new TimeSpan(9, 15, 0)); var historicalProfile = new MarketProfile(tickSize, sessionStartTime); for (int i = 0; i < historicalData.Open.Count; i++) { var priceCandle = new Candle { Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)historicalData.StartTime[i]).UtcDateTime, Open = historicalData.Open[i], High = historicalData.High[i], Low = historicalData.Low[i], Close = historicalData.Close[i] }; var volumeCandle = new Candle { Volume = (long)historicalData.Volume[i] }; _signalGenerationService.UpdateMarketProfile(historicalProfile, priceCandle, volumeCandle); } var profileDataToSave = historicalProfile.ToMarketProfileData(); _marketProfileService.UpdateProfile(instrument.SecurityId, profileDataToSave); if (!_stateManager.HistoricalMarketProfiles.ContainsKey(instrument.SecurityId)) { _stateManager.HistoricalMarketProfiles[instrument.SecurityId] = new List<MarketProfileData>(); } _stateManager.HistoricalMarketProfiles[instrument.SecurityId].Add(profileDataToSave); } catch (Exception ex) { Debug.WriteLine($"[BackfillPrevDay] UNEXPECTED ERROR: {ex.Message}"); } }
+
+        private async Task BackfillAndSavePreviousDayProfileAsync(DashboardInstrument instrument)
+        {
+            var istNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
+            DateTime dateToFetch = GetPreviousTradingDay(istNow);
+
+            if (_stateManager.HistoricalMarketProfiles.GetValueOrDefault(instrument.SecurityId)?.Any(p => p.Date.Date == dateToFetch.Date) == true)
+            {
+                return;
+            }
+
+            try
+            {
+                DashboardInstrument instrumentForHistory = instrument;
+
+                if (instrument.InstrumentType == "INDEX")
+                {
+                    var futureInstrument = _instrumentCache.Values.FirstOrDefault(i => i.IsFuture && i.UnderlyingSymbol == instrument.Symbol);
+                    if (futureInstrument != null)
+                    {
+                        instrumentForHistory = futureInstrument;
+                        Debug.WriteLine($"[BackfillPrevDay] Found future {futureInstrument.DisplayName} for index {instrument.DisplayName}. Using it for historical profile.");
+                    }
+                    else
+                    {
+                        Debug.WriteLine($"[BackfillPrevDay] WARNING: Could not find a tracked future for index {instrument.DisplayName}. Profile will lack volume.");
+                    }
+                }
+
+                var scripInfoForHistory = _scripMasterService.FindBySecurityId(instrumentForHistory.SecurityId);
+                if (scripInfoForHistory == null) return;
+
+                var historicalData = await _apiClient.GetIntradayHistoricalDataAsync(scripInfoForHistory, "1", dateToFetch);
+                if (historicalData?.Open == null || !historicalData.Open.Any()) return;
+
+                decimal tickSize = _signalGenerationService.GetTickSize(instrument);
+                var sessionStartTime = dateToFetch.Date.Add(new TimeSpan(9, 15, 0));
+                var historicalProfile = new MarketProfile(tickSize, sessionStartTime);
+
+                for (int i = 0; i < historicalData.Open.Count; i++)
+                {
+                    var priceCandle = new Candle
+                    {
+                        Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)historicalData.StartTime[i]).UtcDateTime,
+                        Open = historicalData.Open[i],
+                        High = historicalData.High[i],
+                        Low = historicalData.Low[i],
+                        Close = historicalData.Close[i]
+                    };
+                    var volumeCandle = new Candle { Volume = (long)historicalData.Volume[i] };
+                    _signalGenerationService.UpdateMarketProfile(historicalProfile, priceCandle, volumeCandle);
+                }
+
+                var profileDataToSave = historicalProfile.ToMarketProfileData();
+                _marketProfileService.UpdateProfile(instrument.SecurityId, profileDataToSave);
+
+                if (!_stateManager.HistoricalMarketProfiles.ContainsKey(instrument.SecurityId))
+                {
+                    _stateManager.HistoricalMarketProfiles[instrument.SecurityId] = new List<MarketProfileData>();
+                }
+                _stateManager.HistoricalMarketProfiles[instrument.SecurityId].Add(profileDataToSave);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[BackfillPrevDay] UNEXPECTED ERROR for {instrument.DisplayName}: {ex.Message}");
+            }
+        }
+
         private DateTime GetPreviousTradingDay(DateTime currentDate) { var date = currentDate.Date.AddDays(-1); while (date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday || _settingsViewModel.MarketHolidays.Contains(date.Date)) { date = date.AddDays(-1); } return date; }
         private List<Candle> AggregateHistoricalCandles(List<Candle> minuteCandles, TimeSpan timeframe) { return minuteCandles.GroupBy(c => new DateTime(c.Timestamp.Ticks - (c.Timestamp.Ticks % timeframe.Ticks), DateTimeKind.Utc)).Select(g => new Candle { Timestamp = g.Key, Open = g.First().Open, High = g.Max(c => c.High), Low = g.Min(c => c.Low), Close = g.Last().Close, Volume = g.Sum(c => c.Volume), OpenInterest = g.Last().OpenInterest }).ToList(); }
         private void LoadIndicatorStateFromStorage(string securityId) { var timeframes = new[] { TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(15) }; foreach (var tf in timeframes) { var key = $"{securityId}_{tf.TotalMinutes}"; var savedState = _indicatorStateService.GetState(key); if (savedState != null) { _stateManager.MultiTimeframeRsiState[securityId][tf].AvgGain = savedState.LastRsiAvgGain; _stateManager.MultiTimeframeRsiState[securityId][tf].AvgLoss = savedState.LastRsiAvgLoss; _stateManager.MultiTimeframeAtrState[securityId][tf].CurrentAtr = savedState.LastAtr; _stateManager.MultiTimeframeObvState[securityId][tf].CurrentObv = savedState.LastObv; _stateManager.MultiTimeframeObvState[securityId][tf].CurrentMovingAverage = savedState.LastObvMovingAverage; } } }
         private DashboardInstrument GetInstrumentForVolumeAnalysis(DashboardInstrument instrument) { if (instrument.InstrumentType == "INDEX") { var future = _instrumentCache.Values.FirstOrDefault(i => i.IsFuture && i.UnderlyingSymbol == instrument.Symbol); if (future != null) return future; } return instrument; }
 
-        /// <summary>
-        /// --- BUG FIX ---
-        /// The original logic failed to update the Market Profile for the Index instrument itself.
-        /// This revised logic ensures the profile for the instrument that just closed a candle is always updated.
-        /// Then, it handles the special case for futures to link their volume to the underlying index profile.
-        /// </summary>
         private void UpdateMarketProfileForCandle(DashboardInstrument instrument, Candle lastClosedCandle)
         {
-            // Step 1: Always update the profile for the instrument that formed the candle.
-            // For an Index, this uses the Index's own price data and a placeholder for volume.
-            // For a Future, this uses the Future's price and volume data.
             if (_stateManager.MarketProfiles.TryGetValue(instrument.SecurityId, out var directProfile))
             {
-                // For an index, volume data is not directly available, so we pass the candle itself as a placeholder.
-                // The actual volume will be added from the future contract later if available.
-                var volumeCandle = instrument.InstrumentType == "INDEX" ? new Candle { Volume = 0 } : lastClosedCandle;
-                _signalGenerationService.UpdateMarketProfile(directProfile, lastClosedCandle, volumeCandle);
+                directProfile.UpdateInitialBalance(lastClosedCandle);
             }
 
-            // Step 2: If the instrument was a Future, find its underlying Index and update ITS profile with the Future's volume.
             if (instrument.InstrumentType == "FUTIDX")
             {
+                if (_stateManager.MarketProfiles.TryGetValue(instrument.SecurityId, out var futureProfile))
+                {
+                    _signalGenerationService.UpdateMarketProfile(futureProfile, lastClosedCandle, lastClosedCandle);
+                }
+
                 var underlyingIndex = _instrumentCache.Values.FirstOrDefault(i => i.InstrumentType == "INDEX" && i.UnderlyingSymbol == instrument.UnderlyingSymbol);
                 if (underlyingIndex != null && _stateManager.MarketProfiles.TryGetValue(underlyingIndex.SecurityId, out var indexProfile))
                 {
-                    // Find the matching 1-min candle for the index to get the correct price range.
                     var indexCandles = _stateManager.GetCandles(underlyingIndex.SecurityId, TimeSpan.FromMinutes(1));
                     var matchingIndexCandle = indexCandles?.FirstOrDefault(c => c.Timestamp == lastClosedCandle.Timestamp);
 
                     if (matchingIndexCandle != null)
                     {
-                        // Update the index profile using the INDEX's price candle and the FUTURE's volume candle.
                         _signalGenerationService.UpdateMarketProfile(indexProfile, matchingIndexCandle, lastClosedCandle);
                     }
+                }
+            }
+            else if (instrument.InstrumentType != "INDEX")
+            {
+                if (_stateManager.MarketProfiles.TryGetValue(instrument.SecurityId, out var otherProfile))
+                {
+                    _signalGenerationService.UpdateMarketProfile(otherProfile, lastClosedCandle, lastClosedCandle);
                 }
             }
         }
@@ -247,14 +325,13 @@ namespace TradingConsole.Wpf.Services
                 _stateManager.AnalysisResults.TryGetValue(niftyIndex.SecurityId, out var indexResult) &&
                 _stateManager.AnalysisResults.TryGetValue(niftyFuture.SecurityId, out var futureResult))
             {
-                // Copy all relevant volume-based and OI-based signals from the future to the index
                 indexResult.PriceVsVwapSignal = futureResult.PriceVsVwapSignal;
                 indexResult.VwapBandSignal = futureResult.VwapBandSignal;
                 indexResult.Vwap = futureResult.Vwap;
                 indexResult.VolumeSignal = futureResult.VolumeSignal;
                 indexResult.OiSignal = futureResult.OiSignal;
-                // GammaSignal is NOT copied as it's calculated on the index's option chain
                 indexResult.IntradayIvSpikeSignal = futureResult.IntradayIvSpikeSignal;
+                indexResult.CandleSignal5Min = futureResult.CandleSignal5Min;
             }
         }
 

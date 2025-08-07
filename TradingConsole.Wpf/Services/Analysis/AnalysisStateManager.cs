@@ -49,12 +49,14 @@ namespace TradingConsole.Wpf.Services.Analysis
             TimeSpan.FromMinutes(15)
         };
 
-        public void InitializeStateForInstrument(string securityId, string symbol, string instrumentType)
+        // --- FIX: Added underlyingSymbol parameter to correctly link futures to indices ---
+        public void InitializeStateForInstrument(string securityId, string symbol, string instrumentType, string underlyingSymbol)
         {
             if (BackfilledInstruments.Contains(securityId)) return;
 
             BackfilledInstruments.Add(securityId);
-            AnalysisResults[securityId] = new AnalysisResult { SecurityId = securityId, Symbol = symbol, InstrumentGroup = instrumentType };
+            // --- FIX: Populate the UnderlyingGroup property on creation ---
+            AnalysisResults[securityId] = new AnalysisResult { SecurityId = securityId, Symbol = symbol, InstrumentGroup = instrumentType, UnderlyingGroup = underlyingSymbol };
             TickAnalysisState[securityId] = (0, 0, new List<decimal>());
             MultiTimeframeCandles[securityId] = new Dictionary<TimeSpan, List<Candle>>();
             MultiTimeframePriceEmaState[securityId] = new Dictionary<TimeSpan, EmaState>();

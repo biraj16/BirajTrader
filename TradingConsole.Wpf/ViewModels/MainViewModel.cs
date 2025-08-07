@@ -63,7 +63,8 @@ namespace TradingConsole.Wpf.ViewModels
         private Dictionary<string, DashboardInstrument> _dashboardInstrumentMap = new();
         private Dictionary<string, Position> _openPositionsMap = new();
 
-        private readonly Timer _uiUpdateTimer;
+        // --- FIX: Replaced the UI update timer with a new 20ms processing timer ---
+        private readonly Timer _processingTimer;
         private readonly ConcurrentDictionary<string, TickerPacket> _pendingTickerUpdates = new();
         private readonly ConcurrentDictionary<string, QuotePacket> _pendingQuoteUpdates = new();
         private readonly ConcurrentDictionary<string, OiPacket> _pendingOiUpdates = new();
@@ -242,7 +243,8 @@ namespace TradingConsole.Wpf.ViewModels
             RemoveInstrumentCommand = new RelayCommand(async p => await ExecuteRemoveInstrumentAsync(p));
             ShowMtmGraphCommand = new RelayCommand(ExecuteShowMtmGraph);
 
-            _uiUpdateTimer = new Timer(ProcessPendingUiUpdates, null, Timeout.Infinite, Timeout.Infinite);
+            // --- FIX: Initialize the new processing timer ---
+            _processingTimer = new Timer(ProcessPendingUpdates, null, Timeout.Infinite, Timeout.Infinite);
 
             _ = LoadDataOnStartupAsync();
         }
@@ -257,7 +259,11 @@ namespace TradingConsole.Wpf.ViewModels
             {
                 if (_dashboardInstrumentMap.TryGetValue(result.SecurityId, out var instrumentToUpdate))
                 {
-                    instrumentToUpdate.TradingSignal = result.EmaSignal1Min;
+                    // This is where all UI-bound properties get their final values.
+                    instrumentToUpdate.TradingSignal = result.FinalTradeSignal;
+                    instrumentToUpdate.LTP = result.LTP;
+                    instrumentToUpdate.Change = result.PriceChange;
+                    instrumentToUpdate.ChangePercent = result.PriceChangePercent;
                 }
                 AnalysisTab.UpdateAnalysisResult(result);
                 TradeSignalTab.UpdateSignalResult(result);
@@ -727,7 +733,9 @@ namespace TradingConsole.Wpf.ViewModels
 
                 _optionChainRefreshTimer = new Timer(async _ => await RefreshOptionChainDataAsync(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(15));
                 _ivRefreshTimer = new Timer(async _ => await LoadInitialOptionChainsAsync(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
-                _uiUpdateTimer.Change(TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(200));
+
+                // --- FIX: Start the new processing timer with a 20ms interval ---
+                _processingTimer.Change(TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(20));
 
                 Application.Current.Dispatcher.InvokeAsync(() => { SelectedIndex = Indices.FirstOrDefault(i => i.Name == "Nifty 50"); });
             }
@@ -977,128 +985,83 @@ namespace TradingConsole.Wpf.ViewModels
             });
         }
 
-        private void ProcessPendingUiUpdates(object? state)
+        private void ProcessPendingUpdates(object? state)
         {
-            var tickerUpdates = _pendingTickerUpdates.Values.ToList();
+            // Drain all dictionaries to capture the latest data from the 20ms window.
+            var tickerUpdates = new Dictionary<string, TickerPacket>(_pendingTickerUpdates);
             _pendingTickerUpdates.Clear();
-
-            var quoteUpdates = _pendingQuoteUpdates.Values.ToList();
+            var quoteUpdates = new Dictionary<string, QuotePacket>(_pendingQuoteUpdates);
             _pendingQuoteUpdates.Clear();
-
-            var oiUpdates = _pendingOiUpdates.Values.ToList();
+            var oiUpdates = new Dictionary<string, OiPacket>(_pendingOiUpdates);
             _pendingOiUpdates.Clear();
-
-            var prevCloseUpdates = _pendingPreviousCloseUpdates.Values.ToList();
+            var prevCloseUpdates = new Dictionary<string, PreviousClosePacket>(_pendingPreviousCloseUpdates);
             _pendingPreviousCloseUpdates.Clear();
 
-            if (!tickerUpdates.Any() && !quoteUpdates.Any() && !oiUpdates.Any() && !prevCloseUpdates.Any())
+            // Get a unique list of all security IDs that received any update in this batch.
+            var allUpdatedSecurityIds = tickerUpdates.Keys
+                .Union(quoteUpdates.Keys)
+                .Union(oiUpdates.Keys)
+                .Union(prevCloseUpdates.Keys)
+                .Distinct()
+                .ToList();
+
+            if (!allUpdatedSecurityIds.Any()) return;
+
+            // Process each updated instrument in a synchronized manner.
+            foreach (var securityId in allUpdatedSecurityIds)
             {
-                return;
+                if (_dashboardInstrumentMap.TryGetValue(securityId, out var instrumentToUpdate))
+                {
+                    // Apply all updates for this instrument from the captured batch.
+                    if (tickerUpdates.TryGetValue(securityId, out var ticker))
+                    {
+                        instrumentToUpdate.LTP = ticker.LastPrice;
+                    }
+                    if (quoteUpdates.TryGetValue(securityId, out var quote))
+                    {
+                        instrumentToUpdate.LTP = quote.LastPrice;
+                        instrumentToUpdate.Open = quote.Open;
+                        instrumentToUpdate.High = quote.High;
+                        instrumentToUpdate.Low = quote.Low;
+                        instrumentToUpdate.Close = quote.Close;
+                        instrumentToUpdate.Volume = quote.Volume;
+                        instrumentToUpdate.LastTradedQuantity = quote.LastTradeQuantity;
+                        instrumentToUpdate.LastTradeTime = quote.LastTradeTime;
+                        instrumentToUpdate.AvgTradePrice = quote.AvgTradePrice;
+                    }
+                    if (oiUpdates.TryGetValue(securityId, out var oi))
+                    {
+                        instrumentToUpdate.OpenInterest = oi.OpenInterest;
+                    }
+                    if (prevCloseUpdates.TryGetValue(securityId, out var prevClose))
+                    {
+                        instrumentToUpdate.Close = prevClose.PreviousClose;
+                    }
+
+                    // Update option chain and position data directly for UI responsiveness.
+                    if (SelectedIndex != null && securityId == SelectedIndex.ScripId)
+                    {
+                        Application.Current.Dispatcher.InvokeAsync(() => {
+                            UnderlyingPrice = instrumentToUpdate.LTP;
+                            UnderlyingPreviousClose = instrumentToUpdate.Close;
+                        });
+                    }
+                    if (_optionScripMap.TryGetValue(securityId, out var optionDetails))
+                    {
+                        optionDetails.LTP = instrumentToUpdate.LTP;
+                        optionDetails.Volume = instrumentToUpdate.Volume;
+                        optionDetails.OI = instrumentToUpdate.OpenInterest;
+                    }
+                    if (_openPositionsMap.TryGetValue(securityId, out var openPositionToUpdate))
+                    {
+                        openPositionToUpdate.LastTradedPrice = instrumentToUpdate.LTP;
+                    }
+
+                    // Hand off the fully updated instrument state to the Analysis Service.
+                    decimal underlyingLtp = FindUnderlyingInstrument(instrumentToUpdate)?.LTP ?? instrumentToUpdate.LTP;
+                    _analysisService.OnInstrumentDataReceived(instrumentToUpdate, underlyingLtp);
+                }
             }
-
-            Application.Current?.Dispatcher.InvokeAsync(() =>
-            {
-                foreach (var packet in tickerUpdates)
-                {
-                    if (SelectedIndex != null && packet.SecurityId == SelectedIndex.ScripId)
-                    {
-                        UnderlyingPrice = packet.LastPrice;
-                    }
-                    Dashboard.UpdateLtp(packet);
-
-                    if (!string.IsNullOrEmpty(packet.SecurityId) && _openPositionsMap.TryGetValue(packet.SecurityId, out var openPositionToUpdate))
-                    {
-                        openPositionToUpdate.LastTradedPrice = packet.LastPrice;
-                    }
-                }
-
-                foreach (var packet in prevCloseUpdates)
-                {
-                    Dashboard.UpdatePreviousClose(packet);
-                    if (SelectedIndex?.ScripId == packet.SecurityId)
-                    {
-                        UnderlyingPreviousClose = packet.PreviousClose;
-                    }
-                }
-
-                foreach (var packet in quoteUpdates)
-                {
-                    if (string.IsNullOrEmpty(packet.SecurityId)) continue;
-
-                    if (_dashboardInstrumentMap.TryGetValue(packet.SecurityId, out var instrumentToUpdate))
-                    {
-                        instrumentToUpdate.LTP = packet.LastPrice;
-                        instrumentToUpdate.Open = packet.Open;
-                        instrumentToUpdate.High = packet.High;
-                        instrumentToUpdate.Low = packet.Low;
-                        instrumentToUpdate.Close = packet.Close;
-                        instrumentToUpdate.Volume = packet.Volume;
-                        instrumentToUpdate.LastTradedQuantity = packet.LastTradeQuantity;
-                        instrumentToUpdate.LastTradeTime = packet.LastTradeTime;
-                        instrumentToUpdate.AvgTradePrice = packet.AvgTradePrice;
-
-                        if (_optionChainCache.TryGetValue(packet.SecurityId, out var cachedOptionData))
-                        {
-                            instrumentToUpdate.ImpliedVolatility = cachedOptionData.ImpliedVolatility;
-                        }
-
-                        decimal underlyingLtp = 0;
-                        if (instrumentToUpdate.InstrumentType.StartsWith("OPT") || instrumentToUpdate.InstrumentType.StartsWith("FUT"))
-                        {
-                            var underlyingInstrument = FindUnderlyingInstrument(instrumentToUpdate);
-                            if (underlyingInstrument != null)
-                            {
-                                underlyingLtp = underlyingInstrument.LTP;
-                            }
-                        }
-                        else
-                        {
-                            underlyingLtp = instrumentToUpdate.LTP;
-                        }
-
-                        if (underlyingLtp > 0)
-                        {
-                            _analysisService.OnInstrumentDataReceived(instrumentToUpdate, underlyingLtp);
-                        }
-
-
-                        if (SelectedIndex != null && SelectedIndex.ScripId == packet.SecurityId)
-                        {
-                            UnderlyingPrice = packet.LastPrice;
-                        }
-
-                        if (_optionScripMap.TryGetValue(packet.SecurityId, out var optionDetails))
-                        {
-                            optionDetails.LTP = packet.LastPrice;
-                            optionDetails.Volume = packet.Volume;
-                        }
-
-                        if (instrumentToUpdate != null && instrumentToUpdate.SegmentId == 0 && !_dashboardOptionsLoadedFor.Contains(packet.SecurityId))
-                        {
-                            _dashboardOptionsLoadedFor.Add(packet.SecurityId);
-                            _ = LoadDashboardOptionsForIndexAsync(instrumentToUpdate, packet.LastPrice);
-                        }
-
-                        if (_openPositionsMap.TryGetValue(packet.SecurityId, out var openPositionToUpdate))
-                        {
-                            openPositionToUpdate.LastTradedPrice = packet.LastPrice;
-                        }
-                    }
-                }
-
-
-                foreach (var packet in oiUpdates)
-                {
-                    if (!string.IsNullOrEmpty(packet.SecurityId))
-                    {
-                        if (_optionScripMap.TryGetValue(packet.SecurityId, out var optionDetails))
-                        {
-                            optionDetails.OI = packet.OpenInterest;
-                        }
-                        Dashboard.UpdateOi(packet);
-                    }
-                }
-            });
         }
 
         public async Task LoadPortfolioAsync()
@@ -1746,7 +1709,7 @@ namespace TradingConsole.Wpf.ViewModels
             _ivRefreshTimer?.Dispose();
             _optionChainLoadSemaphore?.Dispose();
             _ivCacheSemaphore?.Dispose();
-            _uiUpdateTimer?.Dispose();
+            _processingTimer?.Dispose();
 
             _performanceService?.Cleanup();
 

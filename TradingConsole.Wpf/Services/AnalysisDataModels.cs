@@ -116,7 +116,7 @@ namespace TradingConsole.Wpf.Services
         {
             TickSize = tickSize;
             _sessionStartTime = sessionStartTime;
-            _initialBalanceEndTime = _sessionStartTime.AddMinutes(60); // IB is typically the first hour
+            _initialBalanceEndTime = _sessionStartTime.AddMinutes(30); // IB is typically the first hour
             Date = sessionStartTime.Date;
             InitialBalanceLow = decimal.MaxValue;
         }
