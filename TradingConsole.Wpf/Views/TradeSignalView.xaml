@@ -4,12 +4,15 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:viewmodels="clr-namespace:TradingConsole.Wpf.ViewModels"
+             xmlns:converters="clr-namespace:TradingConsole.Wpf.Converters"
              mc:Ignorable="d" 
              d:DataContext="{d:DesignInstance Type=viewmodels:TradeSignalViewModel, IsDesignTimeCreatable=True}"
              d:DesignHeight="800" d:DesignWidth="1200" Background="#FF1E1E1E" Foreground="White">
 
     <UserControl.Resources>
-        <!-- DataTemplate for displaying a single factor -->
+        <converters:ScoreToColorConverter x:Key="ScoreToColorConverter"/>
+        <converters:ValueToSignConverter x:Key="ValueToSignConverter"/>
+
         <DataTemplate x:Key="FactorDataTemplate">
             <Border BorderBrush="#FF444444" BorderThickness="0,0,0,1" Padding="8,10">
                 <Grid>
@@ -36,6 +39,19 @@
                 </Grid>
             </Border>
         </DataTemplate>
+
+        <Style TargetType="TextBlock" x:Key="HeaderStyle">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,0,5"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style TargetType="TextBlock" x:Key="ValueStyle">
+            <Setter Property="FontSize" Value="26"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+        </Style>
     </UserControl.Resources>
 
     <Grid Margin="15" DataContext="{Binding NiftyAnalysisResult}">
@@ -44,9 +60,8 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Main Header -->
         <Border Grid.Row="0" Background="#FF2D2D30" CornerRadius="5" Padding="15" Margin="0,0,0,15">
-            <StackPanel HorizontalAlignment="Center">
+            <StackPanel>
                 <TextBlock Text="{Binding Symbol}" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,5,0,0">
                     <TextBlock Text="{Binding LTP, StringFormat='{}{0:N2}'}" FontSize="18" FontWeight="SemiBold"/>
@@ -64,19 +79,68 @@
                                 </Style.Triggers>
                             </Style>
                         </TextBlock.Style>
-                        <!-- Note: Assumes PriceChange and PriceChangePercent properties exist on AnalysisResult -->
-                        <Run Text="("/>
-                        <Run Text="{Binding PriceChange, StringFormat='+0.00;-0.00;0.00'}"/>
-                        <Run Text=" "/>
-                        <Run Text="{Binding PriceChangePercent, StringFormat='({0:P2})'}"/>
-                        <Run Text=")"/>
+                        <Run Text="("/><Run Text="{Binding PriceChange, StringFormat='+0.00;-0.00;0.00'}"/><Run Text=" "/><Run Text="{Binding PriceChangePercent, StringFormat='({0:P2})'}"/><Run Text=")"/>
                     </TextBlock>
                 </StackPanel>
-                <Border Background="#FF3E3E42" CornerRadius="3" Padding="8,4" Margin="0,10,0,0">
+                <Border Background="#FF3E3E42" CornerRadius="3" Padding="8,4" Margin="0,10,0,0" HorizontalAlignment="Center">
                     <TextBlock Text="{Binding MarketThesis, StringFormat='Thesis: {0}'}" FontStyle="Italic" HorizontalAlignment="Center"/>
                 </Border>
 
-                <!-- Intraday Profile Levels -->
+                <Grid Margin="0,20,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource HeaderStyle}" Text="CONVICTION SCORE"/>
+                        <TextBlock Style="{StaticResource ValueStyle}" Text="{Binding ConvictionScore}"
+                                   Foreground="{Binding ConvictionScore, Converter={StaticResource ScoreToColorConverter}}"/>
+                        <TextBlock Text="{Binding FinalTradeSignal}" TextAlignment="Center" FontStyle="Italic" Margin="0,5,0,0" Foreground="LightGray"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource HeaderStyle}" Text="MARKET REGIME"/>
+                        <TextBlock Text="{Binding MarketRegime}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ValueStyle}">
+                                    <Setter Property="Foreground" Value="Orange"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding MarketRegime}" Value="High Volatility">
+                                            <Setter Property="Foreground" Value="LimeGreen"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding MarketRegime}" Value="Low Volatility">
+                                            <Setter Property="Foreground" Value="Salmon"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Text="Current market character" TextAlignment="Center" FontStyle="Italic" Margin="0,5,0,0" Foreground="LightGray"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource HeaderStyle}" Text="IV RANK (90-Day)"/>
+                        <TextBlock Text="{Binding IvRank, StringFormat='{}{0:F2}%'}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ValueStyle}">
+                                    <Setter Property="Foreground" Value="White"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IvRank, Converter={StaticResource ValueToSignConverter}, ConverterParameter=30}">
+                                            <Setter Property="Foreground" Value="LimeGreen"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IvRank, Converter={StaticResource ValueToSignConverter}, ConverterParameter=70}">
+                                            <Setter Property="Foreground" Value="Salmon"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Text="Low IVR is ideal for buying options" TextWrapping="Wrap" TextAlignment="Center" FontStyle="Italic" Margin="0,5,0,0" Foreground="LightGray"/>
+                    </StackPanel>
+                </Grid>
+
                 <Border BorderBrush="#FF444444" BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,15,0,0">
                     <Grid MinWidth="300">
                         <Grid.ColumnDefinitions>
@@ -87,7 +151,6 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
-                        <!-- dVAH -->
                         <StackPanel Grid.Column="0" HorizontalAlignment="Center">
                             <TextBlock Text="dVAH" Foreground="LightGray" FontSize="11" HorizontalAlignment="Center"/>
                             <TextBlock Text="{Binding DevelopingVah, StringFormat='{}{0:N2}'}" FontWeight="SemiBold" FontSize="14" Foreground="#FFF44336" HorizontalAlignment="Center"/>
@@ -95,7 +158,6 @@
 
                         <Rectangle Grid.Column="1" Width="1" Fill="#FF444444" Margin="10,0"/>
 
-                        <!-- dPOC -->
                         <StackPanel Grid.Column="2" HorizontalAlignment="Center">
                             <TextBlock Text="dPOC" Foreground="LightGray" FontSize="11" HorizontalAlignment="Center"/>
                             <TextBlock Text="{Binding DevelopingPoc, StringFormat='{}{0:N2}'}" FontWeight="Bold" FontSize="16" HorizontalAlignment="Center"/>
@@ -103,7 +165,6 @@
 
                         <Rectangle Grid.Column="3" Width="1" Fill="#FF444444" Margin="10,0"/>
 
-                        <!-- dVAL -->
                         <StackPanel Grid.Column="4" HorizontalAlignment="Center">
                             <TextBlock Text="dVAL" Foreground="LightGray" FontSize="11" HorizontalAlignment="Center"/>
                             <TextBlock Text="{Binding DevelopingVal, StringFormat='{}{0:N2}'}" FontWeight="SemiBold" FontSize="14" Foreground="#FF4CAF50" HorizontalAlignment="Center"/>
@@ -113,7 +174,6 @@
             </StackPanel>
         </Border>
 
-        <!-- Bullish vs Bearish Columns -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -121,7 +181,6 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Bullish Factors Column -->
             <Border Grid.Column="0" Background="#FF2D2D30" CornerRadius="5">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
@@ -132,7 +191,6 @@
                 </ScrollViewer>
             </Border>
 
-            <!-- Bearish Factors Column -->
             <Border Grid.Column="2" Background="#FF2D2D30" CornerRadius="5">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>

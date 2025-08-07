@@ -24,7 +24,6 @@
         </Grid.RowDefinitions>
 
         <TabControl Grid.Row="0">
-            <!-- Dashboard Tab -->
             <TabItem Header="Dashboard">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Padding="10" BorderBrush="#DEE2E6" BorderThickness="0,0,0,1" Background="White">
@@ -73,14 +72,16 @@
                 </DockPanel>
             </TabItem>
 
-            <!-- Analysis Tab -->
             <TabItem Header="Analysis">
                 <Grid>
                     <views:AnalysisTabView DataContext="{Binding AnalysisTab}"/>
                 </Grid>
             </TabItem>
 
-            <!-- Option Chain Tab -->
+            <TabItem Header="Trade Signals">
+                <views:TradeSignalView DataContext="{Binding TradeSignalTab}"/>
+            </TabItem>
+
             <TabItem Header="Option Chain">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Padding="10" BorderBrush="#DEE2E6" BorderThickness="0,0,0,1" Background="White">
@@ -89,21 +90,19 @@
                             <ComboBox ItemsSource="{Binding Indices}" SelectedItem="{Binding SelectedIndex}" MinWidth="120" Margin="5,0"/>
                             <TextBlock Text="Expiry Date: " VerticalAlignment="Center" FontWeight="SemiBold" Margin="15,0,0,0"/>
                             <ComboBox ItemsSource="{Binding ExpiryDates}" SelectedItem="{Binding SelectedExpiry}" MinWidth="150" Margin="5,0"/>
-                            <!-- MODIFIED: This section now binds to the DashboardInstrument for the selected index -->
-                            <StackPanel Orientation="Horizontal" Margin="20,0,0,0" VerticalAlignment="Center"
-                                        DataContext="{Binding SelectedDashboardInstrument}">
-                                <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" FontWeight="Bold" FontSize="14"/>
-                                <TextBlock Text="{Binding LTP, StringFormat=N2}" FontWeight="Bold" FontSize="14" VerticalAlignment="Center" Margin="10,0,0,0"/>
-                                <TextBlock Foreground="{Binding Change, Mode=OneWay, Converter={StaticResource ValueToBrushConverter}}" Margin="10,0,0,0" VerticalAlignment="Center">
-                                    <Run Text="{Binding Change, Mode=OneWay, StringFormat=N2}"/>
-                                    <Run Text="{Binding ChangePercent, Mode=OneWay, StringFormat=' ({0:P2})'}" Foreground="Gray"/>
+
+                            <StackPanel Orientation="Horizontal" Margin="20,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding SelectedIndex.Symbol}" VerticalAlignment="Center" FontWeight="Bold" FontSize="14"/>
+                                <TextBlock Text="{Binding UnderlyingPrice, StringFormat=N2}" FontWeight="Bold" FontSize="14" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                                <TextBlock Foreground="{Binding UnderlyingPriceChange, Mode=OneWay, Converter={StaticResource ValueToBrushConverter}}" Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <Run Text="{Binding UnderlyingPriceChange, Mode=OneWay, StringFormat=N2}"/>
+                                    <Run Text="{Binding UnderlyingPriceChangePercent, Mode=OneWay, StringFormat=' ({0:P2})'}" Foreground="Gray"/>
                                 </TextBlock>
                             </StackPanel>
                         </StackPanel>
                     </Border>
                     <DataGrid ItemsSource="{Binding OptionChainRows}" RowStyle="{StaticResource OptionChainRowStyle}" VerticalGridLinesBrush="#DEE2E6">
                         <DataGrid.Columns>
-                            <!-- Calls Side (Left) -->
                             <DataGridTemplateColumn Header="OI Profile" Width="130">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -165,10 +164,8 @@
                                 </DataGridTemplateColumn.CellStyle>
                             </DataGridTemplateColumn>
 
-                            <!-- STRIKE -->
                             <DataGridTextColumn Header="Strike" Binding="{Binding StrikePrice, StringFormat=N0}" Width="Auto" CellStyle="{StaticResource StrikePriceCellStyle}"/>
 
-                            <!-- Puts Side (Right) -->
                             <DataGridTemplateColumn Header="LTP" Width="*">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -234,10 +231,8 @@
                 </DockPanel>
             </TabItem>
 
-            <!-- Portfolio Tab -->
             <TabItem Header="Portfolio">
                 <DockPanel>
-                    <!-- Portfolio Summary Header -->
                     <Border DockPanel.Dock="Top" Padding="15" BorderBrush="#DEE2E6" BorderThickness="0,0,0,1" Background="White">
                         <StackPanel Orientation="Horizontal" DataContext="{Binding Portfolio}">
                             <TextBlock Text="Booked P&amp;L:" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,5,0"/>
@@ -254,7 +249,6 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Main Content Area for Positions -->
                     <Grid Margin="10">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*" />
@@ -262,7 +256,6 @@
                             <RowDefinition Height="0.8*" />
                         </Grid.RowDefinitions>
 
-                        <!-- Open Positions -->
                         <GroupBox Grid.Row="0" Header="Open Positions" FontWeight="Bold" FontSize="14" Padding="5">
                             <Grid>
                                 <Grid.RowDefinitions>
@@ -275,7 +268,7 @@
                                     <DataGrid.Columns>
                                         <DataGridTemplateColumn Width="30">
                                             <DataGridTemplateColumn.Header>
-                                                <CheckBox IsChecked="{Binding DataContext.Portfolio.SelectAllOpenPositions, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                <CheckBox IsChecked="{Binding DataContext.Portfolio.SelectAllOpenPositions, RelativeSource={RelativeSource AncestorType=Window}, Mode=TwoWay}"/>
                                             </DataGridTemplateColumn.Header>
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
@@ -319,7 +312,6 @@
 
                         <GridSplitter Grid.Row="1" Height="8" HorizontalAlignment="Stretch" Background="Transparent" ResizeDirection="Rows"/>
 
-                        <!-- Closed Positions -->
                         <GroupBox Grid.Row="2" Header="Closed Positions" FontWeight="Bold" FontSize="14" Padding="5">
                             <DataGrid ItemsSource="{Binding Portfolio.ClosedPositions}" 
                                       VirtualizingPanel.VirtualizationMode="Recycling"
@@ -349,7 +341,6 @@
                 </DockPanel>
             </TabItem>
 
-            <!-- Orders Tab -->
             <TabItem Header="Orders">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Padding="10" BorderBrush="#DEE2E6" BorderThickness="0,0,0,1" Background="White">
@@ -406,14 +397,9 @@
                 </DockPanel>
             </TabItem>
 
-            <!-- Settings Tab -->
             <TabItem Header="Settings">
                 <views:SettingsView DataContext="{Binding Settings}"/>
             </TabItem>
-            <TabItem Header="Trade Signals">
-                <views:TradeSignalView DataContext="{Binding TradeSignalTab}"/>
-            </TabItem>
-
         </TabControl>
 
         <StatusBar Grid.Row="1" VerticalAlignment="Bottom">

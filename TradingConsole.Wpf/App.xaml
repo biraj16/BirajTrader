@@ -8,11 +8,14 @@
         <ResourceDictionary>
             <!-- Converters -->
             <converters:ValueToBrushConverter x:Key="ValueToBrushConverter"/>
+            <converters:ScoreToColorConverter x:Key="ScoreToColorConverter"/>
             <converters:BooleanToVisibilityConverter x:Key="BoolToVis"/>
             <converters:OiToWidthConverter x:Key="OiToWidthConverter"/>
             <converters:AbsoluteValueConverter x:Key="AbsoluteValueConverter"/>
             <converters:ValueToSignConverter x:Key="ValueToSignConverter"/>
             <converters:LvcSolidColorPaintConverter x:Key="LvcSolidColorPaintConverter"/>
+            <converters:ChangeOiToBrushConverter x:Key="ChangeOiToBrushConverter"/>
+            <converters:ChangeOiToWidthConverter x:Key="ChangeOiToWidthConverter"/>
 
             <!-- Base Styles -->
             <Style TargetType="Button">

@@ -147,10 +147,10 @@ namespace TradingConsole.Wpf.ViewModels
         public decimal UnderlyingPriceChange => UnderlyingPrice - UnderlyingPreviousClose;
         public decimal UnderlyingPriceChangePercent => UnderlyingPreviousClose == 0 ? 0 : (UnderlyingPriceChange / UnderlyingPreviousClose);
 
-        private long _totalCallOi;
-        public long TotalCallOi { get => _totalCallOi; set { _totalCallOi = value; OnPropertyChanged(nameof(TotalCallOi)); } }
-        private long _totalPutOi;
-        public long TotalPutOi { get => _totalPutOi; set { _totalPutOi = value; OnPropertyChanged(nameof(TotalPutOi)); } }
+        private decimal _totalCallOi;
+        public decimal TotalCallOi { get => _totalCallOi; set { _totalCallOi = value; OnPropertyChanged(nameof(TotalCallOi)); } }
+        private decimal _totalPutOi;
+        public decimal TotalPutOi { get => _totalPutOi; set { _totalPutOi = value; OnPropertyChanged(nameof(TotalPutOi)); } }
         private long _totalCallVolume;
         public long TotalCallVolume { get => _totalCallVolume; set { _totalCallVolume = value; OnPropertyChanged(nameof(TotalCallVolume)); } }
         private long _totalPutVolume;
@@ -158,8 +158,8 @@ namespace TradingConsole.Wpf.ViewModels
         private decimal _pcrOi;
         public decimal PcrOi { get => _pcrOi; set { _pcrOi = value; OnPropertyChanged(nameof(PcrOi)); } }
 
-        private long _maxOi;
-        public long MaxOi { get => _maxOi; set { if (_maxOi != value) { _maxOi = value; OnPropertyChanged(nameof(MaxOi)); } } }
+        private decimal _maxOi;
+        public decimal MaxOi { get => _maxOi; set { if (_maxOi != value) { _maxOi = value; OnPropertyChanged(nameof(MaxOi)); } } }
         private decimal _maxOiChange;
         public decimal MaxOiChange { get => _maxOiChange; set { if (_maxOiChange != value) { _maxOiChange = value; OnPropertyChanged(nameof(MaxOiChange)); } } }
 
@@ -1640,7 +1640,7 @@ namespace TradingConsole.Wpf.ViewModels
         {
             if (!OptionChainRows.Any()) return;
 
-            long runningCallOi = 0; long runningPutOi = 0;
+            decimal runningCallOi = 0; decimal runningPutOi = 0;
             long runningCallVolume = 0; long runningPutVolume = 0;
 
             foreach (var row in OptionChainRows)
@@ -1653,8 +1653,8 @@ namespace TradingConsole.Wpf.ViewModels
             TotalCallVolume = runningCallVolume; TotalPutVolume = runningPutVolume;
             PcrOi = (TotalCallOi > 0) ? (decimal)TotalPutOi / TotalCallOi : 0;
 
-            long maxCallOi = OptionChainRows.Any(r => r.CallOption != null) ? OptionChainRows.Max(r => (long)(r.CallOption?.OI ?? 0)) : 0;
-            long maxPutOi = OptionChainRows.Any(r => r.PutOption != null) ? OptionChainRows.Max(r => (long)(r.PutOption?.OI ?? 0)) : 0;
+            decimal maxCallOi = OptionChainRows.Any(r => r.CallOption != null) ? OptionChainRows.Max(r => r.CallOption?.OI ?? 0) : 0;
+            decimal maxPutOi = OptionChainRows.Any(r => r.PutOption != null) ? OptionChainRows.Max(r => r.PutOption?.OI ?? 0) : 0;
             MaxOi = Math.Max(maxCallOi, maxPutOi);
 
             decimal maxCallOiChange = OptionChainRows.Any(r => r.CallOption != null) ? OptionChainRows.Max(r => Math.Abs(r.CallOption?.OiChange ?? 0)) : 0;
