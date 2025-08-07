@@ -92,7 +92,7 @@ namespace TradingConsole.Wpf.ViewModels
 
             // Price Action & Key Levels
             AddFactor(allFactors, "Price vs. VWAP", result.PriceVsVwapSignal, s => s.Contains("Above") ? FactorSentiment.Bullish : s.Contains("Below") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
-            AddFactor(allFactors, "VWAP Bands", result.VwapBandSignal, s => s.Contains("Lower") ? FactorSentiment.Bullish : s.Contains("Upper") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
+            AddFactor(allFactors, "VWAP Bands", result.VwapBandSignal, s => s.Contains("Above") ? FactorSentiment.Bullish : s.Contains("Below") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
             AddFactor(allFactors, "5m Candle Pattern", result.CandleSignal5Min, s => s.Contains("Bullish") ? FactorSentiment.Bullish : s.Contains("Bearish") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
 
             // Volume & Open Interest
