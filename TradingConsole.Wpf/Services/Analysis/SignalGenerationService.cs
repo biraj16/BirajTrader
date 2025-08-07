@@ -96,6 +96,9 @@ namespace TradingConsole.Wpf.Services
 
                 var obvState = _stateManager.MultiTimeframeObvState[instrumentForAnalysis.SecurityId][TimeSpan.FromMinutes(1)];
                 result.ObvValue1Min = _indicatorService.CalculateObv(oneMinCandles, obvState);
+
+                // --- FIX: Call the new OBV divergence detection method ---
+                result.ObvDivergenceSignal1Min = _indicatorService.DetectObvDivergence(oneMinCandles, obvState, _settingsViewModel.RsiDivergenceLookback);
             }
             if (fiveMinCandles != null && fiveMinCandles.Any())
             {
@@ -105,6 +108,9 @@ namespace TradingConsole.Wpf.Services
 
                 var obvState = _stateManager.MultiTimeframeObvState[instrumentForAnalysis.SecurityId][TimeSpan.FromMinutes(5)];
                 result.ObvValue5Min = _indicatorService.CalculateObv(fiveMinCandles, obvState);
+
+                // --- FIX: Call the new OBV divergence detection method ---
+                result.ObvDivergenceSignal5Min = _indicatorService.DetectObvDivergence(fiveMinCandles, obvState, _settingsViewModel.RsiDivergenceLookback);
             }
 
             if (oneMinCandles != null) result.CandleSignal1Min = RecognizeCandlestickPattern(oneMinCandles, result);
@@ -388,12 +394,6 @@ namespace TradingConsole.Wpf.Services
             return "N/A";
         }
 
-        /// <summary>
-        /// --- ENHANCEMENT ---
-        /// This method now provides the richest possible context for a candlestick pattern by checking
-        /// against five different types of support/resistance levels: Day's Range, VWAP Bands,
-        /// Developing Value Area, Yesterday's Value Area, and the Initial Balance.
-        /// </summary>
         private string GetPatternContext(AnalysisResult r)
         {
             bool atSupport = r.DayRangeSignal == "Near Low" ||
