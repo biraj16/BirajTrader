@@ -1056,6 +1056,11 @@ namespace TradingConsole.Wpf.ViewModels
                     {
                         openPositionToUpdate.LastTradedPrice = instrumentToUpdate.LTP;
                     }
+                    if (instrumentToUpdate.InstrumentType == "INDEX" && !_dashboardOptionsLoadedFor.Contains(securityId))
+                    {
+                        _dashboardOptionsLoadedFor.Add(securityId);
+                        _ = LoadDashboardOptionsForIndexAsync(instrumentToUpdate, instrumentToUpdate.LTP);
+                    }
 
                     // Hand off the fully updated instrument state to the Analysis Service.
                     decimal underlyingLtp = FindUnderlyingInstrument(instrumentToUpdate)?.LTP ?? instrumentToUpdate.LTP;

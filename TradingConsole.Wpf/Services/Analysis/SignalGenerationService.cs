@@ -29,7 +29,22 @@ namespace TradingConsole.Wpf.Services
             tickState.cumulativePriceVolume += instrumentForAnalysis.AvgTradePrice * instrumentForAnalysis.LastTradedQuantity;
             tickState.cumulativeVolume += instrumentForAnalysis.LastTradedQuantity;
             result.Vwap = (tickState.cumulativeVolume > 0) ? tickState.cumulativePriceVolume / tickState.cumulativeVolume : 0;
+            if (instrument.ImpliedVolatility > 0)
+            {
+                var ivHistory = _stateManager.TickAnalysisState[instrumentForAnalysis.SecurityId].ivHistory;
+                ivHistory.Add(instrument.ImpliedVolatility);
+                if (ivHistory.Count > _settingsViewModel.IvHistoryLength)
+                {
+                    ivHistory.RemoveAt(0);
+                }
+                var (avgIv, ivSignal) = CalculateIvSignal(instrument.ImpliedVolatility, ivHistory);
+                result.CurrentIv = instrument.ImpliedVolatility;
+                result.AvgIv = avgIv;
+                result.IvSignal = ivSignal;
+            }
+
             _stateManager.TickAnalysisState[instrumentForAnalysis.SecurityId] = tickState;
+
 
             var (priceVsVwap, priceVsClose, dayRange) = CalculatePriceActionSignals(instrument, result.Vwap);
             result.PriceVsVwapSignal = priceVsVwap;
@@ -138,6 +153,31 @@ namespace TradingConsole.Wpf.Services
 
             result.IntradayIvSpikeSignal = CalculateIntradayIvSpikeSignal(instrument);
             result.GammaSignal = CalculateGammaSignal(instrument, result.LTP, optionChain);
+        }
+
+        private (decimal avgIv, string ivSignal) CalculateIvSignal(decimal currentIv, List<decimal> ivHistory)
+        {
+            string signal = "Neutral";
+            decimal avgIv = 0;
+            var validIvHistory = ivHistory.Where(iv => iv > 0).ToList();
+
+            if (validIvHistory.Any() && validIvHistory.Count >= _settingsViewModel.IvHistoryLength)
+            {
+                avgIv = validIvHistory.Average();
+                if (currentIv > (avgIv + _settingsViewModel.IvSpikeThreshold))
+                {
+                    signal = "IV Spike Up";
+                }
+                else if (currentIv < (avgIv - _settingsViewModel.IvSpikeThreshold))
+                {
+                    signal = "IV Drop Down";
+                }
+            }
+            else if (currentIv > 0)
+            {
+                signal = "Building History...";
+            }
+            return (avgIv, signal);
         }
 
         private string CalculateGammaSignal(DashboardInstrument instrument, decimal underlyingPrice, System.Collections.ObjectModel.ObservableCollection<OptionChainRow> optionChain)
