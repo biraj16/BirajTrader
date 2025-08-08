@@ -163,7 +163,13 @@ namespace TradingConsole.Wpf.Services
             if (!_stateManager.MarketProfiles.ContainsKey(instrument.SecurityId))
             {
                 decimal tickSize = _signalGenerationService.GetTickSize(instrument);
-                var startTime = DateTime.Today.Add(new TimeSpan(9, 15, 0));
+
+                // --- FIX: Correctly create an Unspecified DateTime and convert it from IST to UTC ---
+                var istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
+                var sessionStartLocal = DateTime.Today.Add(new TimeSpan(9, 15, 0));
+                var sessionStartUnspecified = DateTime.SpecifyKind(sessionStartLocal, DateTimeKind.Unspecified);
+                var startTime = TimeZoneInfo.ConvertTimeToUtc(sessionStartUnspecified, istZone);
+
                 _stateManager.MarketProfiles[instrument.SecurityId] = new MarketProfile(tickSize, startTime);
             }
             LoadIndicatorStateFromStorage(instrument.SecurityId);
@@ -238,10 +244,7 @@ namespace TradingConsole.Wpf.Services
                             OpenInterest = (long)historicalData.OpenInterest[i]
                         };
 
-                        // --- START OF MODIFICATIONS ---
-                        // This ensures the IB High/Low are calculated from the backfilled candles.
-                        liveProfile.UpdateInitialBalance(candle);
-                        // --- END OF MODIFICATIONS ---
+                        _signalGenerationService.UpdateMarketProfile(liveProfile, candle, candle);
 
                         candles.Add(candle);
                     }
@@ -294,7 +297,13 @@ namespace TradingConsole.Wpf.Services
                 if (historicalData?.Open == null || !historicalData.Open.Any()) return;
 
                 decimal tickSize = _signalGenerationService.GetTickSize(instrument);
-                var sessionStartTime = dateToFetch.Date.Add(new TimeSpan(9, 15, 0));
+
+                // --- FIX: Ensure the historical session start time is also UTC for consistency ---
+                var istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
+                var sessionStartLocal = dateToFetch.Date.Add(new TimeSpan(9, 15, 0));
+                var sessionStartUnspecified = DateTime.SpecifyKind(sessionStartLocal, DateTimeKind.Unspecified);
+                var sessionStartTime = TimeZoneInfo.ConvertTimeToUtc(sessionStartUnspecified, istZone);
+
                 var historicalProfile = new MarketProfile(tickSize, sessionStartTime);
 
                 for (int i = 0; i < historicalData.Open.Count; i++)
