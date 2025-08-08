@@ -206,8 +206,59 @@ namespace TradingConsole.Wpf.Services
         }
 
         private void RunDailyBiasAnalysis(DashboardInstrument instrument) { var result = _stateManager.GetResult(instrument.SecurityId); _signalGenerationService.RunDailyBiasAnalysis(instrument, result); OnAnalysisUpdated?.Invoke(result); }
-        private async Task BackfillCurrentDayCandlesAsync(DashboardInstrument instrument) { if (!IsMarketOpen()) return; var istNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("India Standard Time")); if (istNow.TimeOfDay < new TimeSpan(9, 15, 0)) return; try { var priceScripInfo = _scripMasterService.FindBySecurityId(instrument.SecurityId); if (priceScripInfo == null) return; var historicalData = await _apiClient.GetIntradayHistoricalDataAsync(priceScripInfo, "1", istNow.Date); if (historicalData?.Open == null || !historicalData.Open.Any()) return; var candles = new List<Candle>(); for (int i = 0; i < historicalData.Open.Count; i++) { var candle = new Candle { Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)historicalData.StartTime[i]).UtcDateTime, Open = historicalData.Open[i], High = historicalData.High[i], Low = historicalData.Low[i], Close = historicalData.Close[i], Volume = (long)historicalData.Volume[i], OpenInterest = (long)historicalData.OpenInterest[i] }; candles.Add(candle); } var timeframes = new[] { TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(3), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(15) }; foreach (var timeframe in timeframes) { _stateManager.MultiTimeframeCandles[instrument.SecurityId][timeframe] = AggregateHistoricalCandles(candles, timeframe); _indicatorService.WarmupIndicators(instrument.SecurityId, timeframe, _settingsViewModel.ShortEmaLength, _settingsViewModel.LongEmaLength); } } catch (Exception ex) { Debug.WriteLine($"[BackfillCurrentDay] ERROR: {ex.Message}"); } }
+        private async Task BackfillCurrentDayCandlesAsync(DashboardInstrument instrument)
+        {
+            if (!IsMarketOpen()) return;
 
+            var istNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
+            if (istNow.TimeOfDay < new TimeSpan(9, 15, 0)) return;
+
+            try
+            {
+                var priceScripInfo = _scripMasterService.FindBySecurityId(instrument.SecurityId);
+                if (priceScripInfo == null) return;
+
+                var historicalData = await _apiClient.GetIntradayHistoricalDataAsync(priceScripInfo, "1", istNow.Date);
+                if (historicalData?.Open == null || !historicalData.Open.Any()) return;
+
+                var candles = new List<Candle>();
+
+                if (_stateManager.MarketProfiles.TryGetValue(instrument.SecurityId, out var liveProfile))
+                {
+                    for (int i = 0; i < historicalData.Open.Count; i++)
+                    {
+                        var candle = new Candle
+                        {
+                            Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)historicalData.StartTime[i]).UtcDateTime,
+                            Open = historicalData.Open[i],
+                            High = historicalData.High[i],
+                            Low = historicalData.Low[i],
+                            Close = historicalData.Close[i],
+                            Volume = (long)historicalData.Volume[i],
+                            OpenInterest = (long)historicalData.OpenInterest[i]
+                        };
+
+                        // --- START OF MODIFICATIONS ---
+                        // This ensures the IB High/Low are calculated from the backfilled candles.
+                        liveProfile.UpdateInitialBalance(candle);
+                        // --- END OF MODIFICATIONS ---
+
+                        candles.Add(candle);
+                    }
+                }
+
+                var timeframes = new[] { TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(3), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(15) };
+                foreach (var timeframe in timeframes)
+                {
+                    _stateManager.MultiTimeframeCandles[instrument.SecurityId][timeframe] = AggregateHistoricalCandles(candles, timeframe);
+                    _indicatorService.WarmupIndicators(instrument.SecurityId, timeframe, _settingsViewModel.ShortEmaLength, _settingsViewModel.LongEmaLength);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[BackfillCurrentDay] ERROR: {ex.Message}");
+            }
+        }
         private async Task BackfillAndSavePreviousDayProfileAsync(DashboardInstrument instrument)
         {
             var istNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));

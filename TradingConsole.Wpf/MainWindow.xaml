@@ -111,7 +111,7 @@
                                                 <Border.Width>
                                                     <MultiBinding Converter="{StaticResource OiToWidthConverter}">
                                                         <Binding Path="CallOption.OI"/>
-                                                        <Binding Path="DataContext.MaxOi" RelativeSource="{RelativeSource AncestorType=DataGrid}"/>
+                                                        <Binding Path="DataContext.MaxOi" RelativeSource="{RelativeSource AncestorType=Window}"/>
                                                     </MultiBinding>
                                                 </Border.Width>
                                             </Border>
@@ -121,7 +121,7 @@
                                                 <Border.Width>
                                                     <MultiBinding Converter="{StaticResource ChangeOiToWidthConverter}">
                                                         <Binding Path="CallOption.OiChange"/>
-                                                        <Binding Path="DataContext.MaxOiChange" RelativeSource="{RelativeSource AncestorType=DataGrid}"/>
+                                                        <Binding Path="DataContext.MaxOiChange" RelativeSource="{RelativeSource AncestorType=Window}"/>
                                                     </MultiBinding>
                                                 </Border.Width>
                                             </Border>
@@ -208,7 +208,7 @@
                                                 <Border.Width>
                                                     <MultiBinding Converter="{StaticResource OiToWidthConverter}">
                                                         <Binding Path="PutOption.OI"/>
-                                                        <Binding Path="DataContext.MaxOi" RelativeSource="{RelativeSource AncestorType=DataGrid}"/>
+                                                        <Binding Path="DataContext.MaxOi" RelativeSource="{RelativeSource AncestorType=Window}"/>
                                                     </MultiBinding>
                                                 </Border.Width>
                                             </Border>
@@ -218,7 +218,7 @@
                                                 <Border.Width>
                                                     <MultiBinding Converter="{StaticResource ChangeOiToWidthConverter}">
                                                         <Binding Path="PutOption.OiChange"/>
-                                                        <Binding Path="DataContext.MaxOiChange" RelativeSource="{RelativeSource AncestorType=DataGrid}"/>
+                                                        <Binding Path="DataContext.MaxOiChange" RelativeSource="{RelativeSource AncestorType=Window}"/>
                                                     </MultiBinding>
                                                 </Border.Width>
                                             </Border>
