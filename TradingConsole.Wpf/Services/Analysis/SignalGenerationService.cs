@@ -1,6 +1,7 @@
 ﻿// TradingConsole.Wpf/Services/Analysis/SignalGenerationService.cs
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using TradingConsole.Core.Models;
 using TradingConsole.Wpf.Services.Analysis;
@@ -112,7 +113,6 @@ namespace TradingConsole.Wpf.Services
                 var obvState = _stateManager.MultiTimeframeObvState[instrumentForAnalysis.SecurityId][TimeSpan.FromMinutes(1)];
                 result.ObvValue1Min = _indicatorService.CalculateObv(oneMinCandles, obvState);
 
-                // --- FIX: Call the new OBV divergence detection method ---
                 result.ObvDivergenceSignal1Min = _indicatorService.DetectObvDivergence(oneMinCandles, obvState, _settingsViewModel.RsiDivergenceLookback);
             }
             if (fiveMinCandles != null && fiveMinCandles.Any())
@@ -124,7 +124,6 @@ namespace TradingConsole.Wpf.Services
                 var obvState = _stateManager.MultiTimeframeObvState[instrumentForAnalysis.SecurityId][TimeSpan.FromMinutes(5)];
                 result.ObvValue5Min = _indicatorService.CalculateObv(fiveMinCandles, obvState);
 
-                // --- FIX: Call the new OBV divergence detection method ---
                 result.ObvDivergenceSignal5Min = _indicatorService.DetectObvDivergence(fiveMinCandles, obvState, _settingsViewModel.RsiDivergenceLookback);
             }
 
@@ -153,6 +152,11 @@ namespace TradingConsole.Wpf.Services
 
             result.IntradayIvSpikeSignal = CalculateIntradayIvSpikeSignal(instrument);
             result.GammaSignal = CalculateGammaSignal(instrument, result.LTP, optionChain);
+
+            if (instrument.InstrumentType == "INDEX")
+            {
+                result.IvSkewSignal = CalculateIvSkewSignal(instrument, optionChain);
+            }
         }
 
         private (decimal avgIv, string ivSignal) CalculateIvSignal(decimal currentIv, List<decimal> ivHistory)
@@ -232,6 +236,65 @@ namespace TradingConsole.Wpf.Services
 
             return "Neutral";
         }
+
+        private string CalculateIvSkewSignal(DashboardInstrument instrument, System.Collections.ObjectModel.ObservableCollection<OptionChainRow> optionChain)
+        {
+            if (optionChain == null || !optionChain.Any())
+            {
+                Debug.WriteLine("[IVSkew] N/A - Option chain is empty.");
+                return "N/A";
+            }
+
+            var state = _stateManager.IvSkewStates[instrument.SecurityId];
+            var atmStrikeRow = optionChain.OrderBy(r => Math.Abs(r.StrikePrice - instrument.LTP)).FirstOrDefault();
+
+            if (atmStrikeRow == null || atmStrikeRow.CallOption.IV <= 0 || atmStrikeRow.PutOption.IV <= 0)
+            {
+                Debug.WriteLine("[IVSkew] N/A - ATM Strike not found or has zero IV.");
+                return "N/A";
+            }
+
+            var otmCall = optionChain.Where(r => r.StrikePrice > atmStrikeRow.StrikePrice && r.CallOption.IV > 0).OrderBy(r => r.StrikePrice).FirstOrDefault();
+            var otmPut = optionChain.Where(r => r.StrikePrice < atmStrikeRow.StrikePrice && r.PutOption.IV > 0).OrderByDescending(r => r.StrikePrice).FirstOrDefault();
+
+            if (otmCall == null || otmPut == null)
+            {
+                Debug.WriteLine("[IVSkew] N/A - OTM strikes not found.");
+                return "N/A";
+            }
+
+            decimal callStrikeDiff = otmCall.StrikePrice - atmStrikeRow.StrikePrice;
+            decimal putStrikeDiff = atmStrikeRow.StrikePrice - otmPut.StrikePrice;
+            if (callStrikeDiff == 0 || putStrikeDiff == 0) return "N/A";
+
+            decimal callSkewSlope = (otmCall.CallOption.IV - atmStrikeRow.CallOption.IV) / callStrikeDiff;
+            decimal putSkewSlope = (atmStrikeRow.PutOption.IV - otmPut.PutOption.IV) / putStrikeDiff;
+
+            state.CallSkewSlopeHistory.Add(callSkewSlope);
+            if (state.CallSkewSlopeHistory.Count > 10) state.CallSkewSlopeHistory.RemoveAt(0);
+
+            state.PutSkewSlopeHistory.Add(putSkewSlope);
+            if (state.PutSkewSlopeHistory.Count > 10) state.PutSkewSlopeHistory.RemoveAt(0);
+
+            decimal avgCallSkew = state.CallSkewSlopeHistory.Average();
+            decimal avgPutSkew = state.PutSkewSlopeHistory.Average();
+
+            bool isPriceTrendingUp = instrument.LTP > instrument.Open;
+            bool isPriceTrendingDown = instrument.LTP < instrument.Open;
+
+            if (putSkewSlope > avgPutSkew * 1.5m && callSkewSlope < avgCallSkew * 0.5m)
+            {
+                return isPriceTrendingDown ? "Bullish Skew Divergence (Full)" : "Bullish Skew";
+            }
+
+            if (callSkewSlope > avgCallSkew * 1.5m && putSkewSlope < avgPutSkew * 0.5m)
+            {
+                return isPriceTrendingUp ? "Bearish Skew Divergence (Full)" : "Bearish Skew";
+            }
+
+            return "Neutral Skew";
+        }
+
 
         public void UpdateIvMetrics(DashboardInstrument instrument, decimal underlyingPrice)
         {
