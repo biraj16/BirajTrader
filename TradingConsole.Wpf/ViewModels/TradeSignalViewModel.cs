@@ -32,6 +32,10 @@ namespace TradingConsole.Wpf.ViewModels
         private FactorSentiment _sentiment;
         public FactorSentiment Sentiment { get => _sentiment; set { _sentiment = value; OnPropertyChanged(); } }
 
+        // --- NEW PROPERTY ADDED ---
+        private string _stabilityText = string.Empty;
+        public string StabilityText { get => _stabilityText; set { _stabilityText = value; OnPropertyChanged(); } }
+
         public event PropertyChangedEventHandler? PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         {
@@ -84,31 +88,31 @@ namespace TradingConsole.Wpf.ViewModels
             var allFactors = new List<FactorViewModel>();
 
             // Market Structure & Context
-            AddFactor(allFactors, "Multi-Day Structure", result.MarketStructure, s => s.Contains("Up") ? FactorSentiment.Bullish : s.Contains("Down") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
-            AddFactor(allFactors, "Opening Type", result.OpenTypeSignal, s => s.Contains("Bullish") ? FactorSentiment.Bullish : s.Contains("Bearish") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
-            AddFactor(allFactors, "Daily Bias", result.DailyBias, s => s.Contains("Bullish") ? FactorSentiment.Bullish : s.Contains("Bearish") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
-            AddFactor(allFactors, "vs. Yesterday's Profile", result.YesterdayProfileSignal, s => s.Contains("Above") || s.Contains("Lower Y-Value") ? FactorSentiment.Bullish : s.Contains("Below") || s.Contains("Upper Y-Value") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
-            AddFactor(allFactors, "Initial Balance", result.InitialBalanceSignal, s => s.Contains("Breakout") ? FactorSentiment.Bullish : s.Contains("Breakdown") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
+            AddFactor(allFactors, "Multi-Day Structure", result.MarketStructure, result.MarketStructureStability, s => s.Contains("Up") ? FactorSentiment.Bullish : s.Contains("Down") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
+            AddFactor(allFactors, "Opening Type", result.OpenTypeSignal, result.OpenTypeSignalStability, s => s.Contains("Bullish") ? FactorSentiment.Bullish : s.Contains("Bearish") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
+            AddFactor(allFactors, "Daily Bias", result.DailyBias, result.DailyBiasStability, s => s.Contains("Bullish") ? FactorSentiment.Bullish : s.Contains("Bearish") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
+            AddFactor(allFactors, "vs. Yesterday's Profile", result.YesterdayProfileSignal, result.YesterdayProfileSignalStability, s => s.Contains("Above") || s.Contains("Lower Y-Value") ? FactorSentiment.Bullish : s.Contains("Below") || s.Contains("Upper Y-Value") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
+            AddFactor(allFactors, "Initial Balance", result.InitialBalanceSignal, result.InitialBalanceSignalStability, s => s.Contains("Breakout") ? FactorSentiment.Bullish : s.Contains("Breakdown") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
 
             // Price Action & Key Levels
-            AddFactor(allFactors, "Price vs. VWAP", result.PriceVsVwapSignal, s => s.Contains("Above") ? FactorSentiment.Bullish : s.Contains("Below") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
-            AddFactor(allFactors, "VWAP Bands", result.VwapBandSignal, s => s.Contains("Above") ? FactorSentiment.Bullish : s.Contains("Below") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
-            AddFactor(allFactors, "5m Candle Pattern", result.CandleSignal5Min, s => s.Contains("Bullish") ? FactorSentiment.Bullish : s.Contains("Bearish") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
+            AddFactor(allFactors, "Price vs. VWAP", result.PriceVsVwapSignal, result.PriceVsVwapSignalStability, s => s.Contains("Above") ? FactorSentiment.Bullish : s.Contains("Below") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
+            AddFactor(allFactors, "VWAP Bands", result.VwapBandSignal, result.VwapBandSignalStability, s => s.Contains("Above") ? FactorSentiment.Bullish : s.Contains("Below") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
+            AddFactor(allFactors, "5m Candle Pattern", result.CandleSignal5Min, result.CandleSignal5MinStability, s => s.Contains("Bullish") ? FactorSentiment.Bullish : s.Contains("Bearish") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
 
             // Volume & Open Interest
-            AddFactor(allFactors, "Volume", result.VolumeSignal, s => s.Contains("Burst") ? (result.LTP > result.Vwap ? FactorSentiment.Bullish : FactorSentiment.Bearish) : FactorSentiment.Neutral);
-            AddFactor(allFactors, "Futures OI", result.OiSignal, s => s == "Long Buildup" || s == "Short Covering" ? FactorSentiment.Bullish : s == "Short Buildup" || s == "Long Unwinding" ? FactorSentiment.Bearish : FactorSentiment.Neutral);
-            AddFactor(allFactors, "Institutional Intent", result.InstitutionalIntent, s => s.Contains("Bullish") ? FactorSentiment.Bullish : s.Contains("Bearish") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
+            AddFactor(allFactors, "Volume", result.VolumeSignal, result.VolumeSignalStability, s => s.Contains("Burst") ? (result.LTP > result.Vwap ? FactorSentiment.Bullish : FactorSentiment.Bearish) : FactorSentiment.Neutral);
+            AddFactor(allFactors, "Futures OI", result.OiSignal, result.OiSignalStability, s => s == "Long Buildup" || s == "Short Covering" ? FactorSentiment.Bullish : s == "Short Buildup" || s == "Long Unwinding" ? FactorSentiment.Bearish : FactorSentiment.Neutral);
+            AddFactor(allFactors, "Institutional Intent", result.InstitutionalIntent, result.InstitutionalIntentStability, s => s.Contains("Bullish") ? FactorSentiment.Bullish : s.Contains("Bearish") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
 
             // Volatility Dynamics
-            AddFactor(allFactors, "IV Rank", $"{result.IvRank:F2}%", v => result.IvRank < 50 ? FactorSentiment.Bullish : FactorSentiment.Bearish); // Low IV is bullish for option buyers
-            AddFactor(allFactors, "Intraday Volatility", result.AtrSignal5Min, s => s.Contains("Expanding") ? (result.LTP > result.Vwap ? FactorSentiment.Bullish : FactorSentiment.Bearish) : FactorSentiment.Neutral);
-            AddFactor(allFactors, "IV Skew", result.IvSkewSignal, s => s.Contains("Bullish") ? FactorSentiment.Bullish : s.Contains("Bearish") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
+            AddFactor(allFactors, "IV Rank", $"{result.IvRank:F2}%", "", v => result.IvRank < 50 ? FactorSentiment.Bullish : FactorSentiment.Bearish); // Low IV is bullish for option buyers
+            AddFactor(allFactors, "Intraday Volatility", result.AtrSignal5Min, result.AtrSignal5MinStability, s => s.Contains("Expanding") ? (result.LTP > result.Vwap ? FactorSentiment.Bullish : FactorSentiment.Bearish) : FactorSentiment.Neutral);
+            AddFactor(allFactors, "IV Skew", result.IvSkewSignal, result.IvSkewSignalStability, s => s.Contains("Bullish") ? FactorSentiment.Bullish : s.Contains("Bearish") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
 
             // Momentum & Divergence
-            AddFactor(allFactors, "5m RSI Divergence", result.RsiSignal5Min, s => s.Contains("Bullish") ? FactorSentiment.Bullish : s.Contains("Bearish") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
-            AddFactor(allFactors, "5m OBV Divergence", result.ObvDivergenceSignal5Min, s => s.Contains("Bullish") ? FactorSentiment.Bullish : s.Contains("Bearish") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
-            AddFactor(allFactors, "EMA Trend (5m/15m)", $"{result.EmaSignal5Min} / {result.EmaSignal15Min}", s => result.EmaSignal5Min == "Bullish Cross" && result.EmaSignal15Min == "Bullish Cross" ? FactorSentiment.Bullish : result.EmaSignal5Min == "Bearish Cross" && result.EmaSignal15Min == "Bearish Cross" ? FactorSentiment.Bearish : FactorSentiment.Neutral);
+            AddFactor(allFactors, "5m RSI Divergence", result.RsiSignal5Min, result.RsiSignal5MinStability, s => s.Contains("Bullish") ? FactorSentiment.Bullish : s.Contains("Bearish") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
+            AddFactor(allFactors, "5m OBV Divergence", result.ObvDivergenceSignal5Min, result.ObvDivergenceSignal5MinStability, s => s.Contains("Bullish") ? FactorSentiment.Bullish : s.Contains("Bearish") ? FactorSentiment.Bearish : FactorSentiment.Neutral);
+            AddFactor(allFactors, "EMA Trend (5m/15m)", $"{result.EmaSignal5Min} / {result.EmaSignal15Min}", result.EmaSignal15MinStability, s => result.EmaSignal5Min == "Bullish Cross" && result.EmaSignal15Min == "Bullish Cross" ? FactorSentiment.Bullish : result.EmaSignal5Min == "Bearish Cross" && result.EmaSignal15Min == "Bearish Cross" ? FactorSentiment.Bearish : FactorSentiment.Neutral);
 
             // Populate the final lists
             foreach (var factor in allFactors.Where(f => f.Sentiment == FactorSentiment.Bullish))
@@ -124,7 +128,7 @@ namespace TradingConsole.Wpf.ViewModels
         /// <summary>
         /// Helper method to create and add a factor to the list.
         /// </summary>
-        private void AddFactor(List<FactorViewModel> factors, string name, string value, Func<string, FactorSentiment> sentimentEvaluator)
+        private void AddFactor(List<FactorViewModel> factors, string name, string value, string stabilityText, Func<string, FactorSentiment> sentimentEvaluator)
         {
             if (string.IsNullOrEmpty(value) || value == "N/A" || value == "Neutral")
                 return;
@@ -132,14 +136,14 @@ namespace TradingConsole.Wpf.ViewModels
             var sentiment = sentimentEvaluator(value);
             if (sentiment != FactorSentiment.Neutral)
             {
-                factors.Add(new FactorViewModel { FactorName = name, FactorValue = value, Sentiment = sentiment });
+                factors.Add(new FactorViewModel { FactorName = name, FactorValue = value, StabilityText = stabilityText, Sentiment = sentiment });
             }
         }
 
         /// <summary>
         /// Overload for numeric values.
         /// </summary>
-        private void AddFactor<T>(List<FactorViewModel> factors, string name, string value, Func<T, FactorSentiment> sentimentEvaluator) where T : struct
+        private void AddFactor<T>(List<FactorViewModel> factors, string name, string value, string stabilityText, Func<T, FactorSentiment> sentimentEvaluator) where T : struct
         {
             if (string.IsNullOrEmpty(value) || value == "N/A" || value == "Neutral")
                 return;
@@ -149,7 +153,7 @@ namespace TradingConsole.Wpf.ViewModels
             var sentiment = sentimentEvaluator(default(T)); // This part needs more robust logic if used.
             if (sentiment != FactorSentiment.Neutral)
             {
-                factors.Add(new FactorViewModel { FactorName = name, FactorValue = value, Sentiment = sentiment });
+                factors.Add(new FactorViewModel { FactorName = name, FactorValue = value, StabilityText = stabilityText, Sentiment = sentiment });
             }
         }
 

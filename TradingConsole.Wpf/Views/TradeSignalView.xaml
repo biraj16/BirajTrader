@@ -19,9 +19,13 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="{Binding FactorName}" VerticalAlignment="Center" Foreground="LightGray"/>
-                    <TextBlock Grid.Column="1" Text="{Binding FactorValue}" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center">
+
+                    <TextBlock Grid.Column="1" Text="{Binding StabilityText}" FontStyle="Italic" Foreground="Gray" VerticalAlignment="Center" Margin="10,0"/>
+
+                    <TextBlock Grid.Column="2" Text="{Binding FactorValue}" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Foreground" Value="White"/>
