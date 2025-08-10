@@ -1,6 +1,6 @@
 ﻿// TradingConsole.Wpf/Services/Analysis/AnalysisStateManager.cs
-// --- MODIFIED: Added MarketPhase state management ---
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using TradingConsole.Core.Models;
 using TradingConsole.Wpf.ViewModels;
@@ -13,57 +13,54 @@ namespace TradingConsole.Wpf.Services.Analysis
     /// </summary>
     public class AnalysisStateManager
     {
-        // --- NEW: Added state for the current market phase ---
         public MarketPhase CurrentMarketPhase { get; set; } = MarketPhase.PreOpen;
 
-        public Dictionary<string, AnalysisResult> AnalysisResults { get; } = new();
-        public Dictionary<string, MarketProfile> MarketProfiles { get; } = new();
-        public Dictionary<string, List<MarketProfileData>> HistoricalMarketProfiles { get; } = new();
+        // --- MODIFIED: All Dictionaries are now ConcurrentDictionaries for thread-safety ---
+        public ConcurrentDictionary<string, AnalysisResult> AnalysisResults { get; } = new();
+        public ConcurrentDictionary<string, MarketProfile> MarketProfiles { get; } = new();
+        public ConcurrentDictionary<string, List<MarketProfileData>> HistoricalMarketProfiles { get; } = new();
 
         public HashSet<string> BackfilledInstruments { get; } = new();
-        public Dictionary<string, (decimal cumulativePriceVolume, long cumulativeVolume, List<decimal> ivHistory)> TickAnalysisState { get; } = new();
+        public ConcurrentDictionary<string, (decimal cumulativePriceVolume, long cumulativeVolume, List<decimal> ivHistory)> TickAnalysisState { get; } = new();
 
-        public Dictionary<string, Dictionary<TimeSpan, List<Candle>>> MultiTimeframeCandles { get; } = new();
-        public Dictionary<string, Dictionary<TimeSpan, EmaState>> MultiTimeframePriceEmaState { get; } = new();
-        public Dictionary<string, Dictionary<TimeSpan, EmaState>> MultiTimeframeVwapEmaState { get; } = new();
-        public Dictionary<string, Dictionary<TimeSpan, RsiState>> MultiTimeframeRsiState { get; } = new();
-        public Dictionary<string, Dictionary<TimeSpan, AtrState>> MultiTimeframeAtrState { get; } = new();
-        public Dictionary<string, Dictionary<TimeSpan, ObvState>> MultiTimeframeObvState { get; } = new();
+        public ConcurrentDictionary<string, ConcurrentDictionary<TimeSpan, List<Candle>>> MultiTimeframeCandles { get; } = new();
+        public ConcurrentDictionary<string, ConcurrentDictionary<TimeSpan, EmaState>> MultiTimeframePriceEmaState { get; } = new();
+        public ConcurrentDictionary<string, ConcurrentDictionary<TimeSpan, EmaState>> MultiTimeframeVwapEmaState { get; } = new();
+        public ConcurrentDictionary<string, ConcurrentDictionary<TimeSpan, RsiState>> MultiTimeframeRsiState { get; } = new();
+        public ConcurrentDictionary<string, ConcurrentDictionary<TimeSpan, AtrState>> MultiTimeframeAtrState { get; } = new();
+        public ConcurrentDictionary<string, ConcurrentDictionary<TimeSpan, ObvState>> MultiTimeframeObvState { get; } = new();
 
-        public Dictionary<string, IntradayIvState> IntradayIvStates { get; } = new();
-        public Dictionary<string, IntradayIvState.CustomLevelState> CustomLevelStates { get; } = new();
-        public Dictionary<string, (bool isBreakout, bool isBreakdown)> InitialBalanceState { get; } = new();
+        public ConcurrentDictionary<string, IntradayIvState> IntradayIvStates { get; } = new();
+        public ConcurrentDictionary<string, IntradayIvState.CustomLevelState> CustomLevelStates { get; } = new();
+        public ConcurrentDictionary<string, (bool isBreakout, bool isBreakdown)> InitialBalanceState { get; } = new();
 
-        public Dictionary<string, RelativeStrengthState> RelativeStrengthStates { get; } = new();
-        public Dictionary<string, IvSkewState> IvSkewStates { get; } = new();
-        public Dictionary<string, DateTime> LastSignalTime { get; } = new();
-
-        public Dictionary<string, bool> IsInVolatilitySqueeze { get; } = new();
+        public ConcurrentDictionary<string, RelativeStrengthState> RelativeStrengthStates { get; } = new();
+        public ConcurrentDictionary<string, IvSkewState> IvSkewStates { get; } = new();
+        public ConcurrentDictionary<string, DateTime> LastSignalTime { get; } = new();
+        public ConcurrentDictionary<string, bool> IsInVolatilitySqueeze { get; } = new();
 
 
         private readonly List<TimeSpan> _timeframes = new()
         {
             TimeSpan.FromMinutes(1),
-            TimeSpan.FromMinutes(3), // Added 3-min for OI analysis
+            TimeSpan.FromMinutes(3),
             TimeSpan.FromMinutes(5),
             TimeSpan.FromMinutes(15)
         };
 
-        // --- FIX: Added underlyingSymbol parameter to correctly link futures to indices ---
         public void InitializeStateForInstrument(string securityId, string symbol, string instrumentType, string underlyingSymbol)
         {
             if (BackfilledInstruments.Contains(securityId)) return;
 
             BackfilledInstruments.Add(securityId);
-            // --- FIX: Populate the UnderlyingGroup property on creation ---
             AnalysisResults[securityId] = new AnalysisResult { SecurityId = securityId, Symbol = symbol, InstrumentGroup = instrumentType, UnderlyingGroup = underlyingSymbol };
             TickAnalysisState[securityId] = (0, 0, new List<decimal>());
-            MultiTimeframeCandles[securityId] = new Dictionary<TimeSpan, List<Candle>>();
-            MultiTimeframePriceEmaState[securityId] = new Dictionary<TimeSpan, EmaState>();
-            MultiTimeframeVwapEmaState[securityId] = new Dictionary<TimeSpan, EmaState>();
-            MultiTimeframeRsiState[securityId] = new Dictionary<TimeSpan, RsiState>();
-            MultiTimeframeAtrState[securityId] = new Dictionary<TimeSpan, AtrState>();
-            MultiTimeframeObvState[securityId] = new Dictionary<TimeSpan, ObvState>();
+            MultiTimeframeCandles[securityId] = new ConcurrentDictionary<TimeSpan, List<Candle>>();
+            MultiTimeframePriceEmaState[securityId] = new ConcurrentDictionary<TimeSpan, EmaState>();
+            MultiTimeframeVwapEmaState[securityId] = new ConcurrentDictionary<TimeSpan, EmaState>();
+            MultiTimeframeRsiState[securityId] = new ConcurrentDictionary<TimeSpan, RsiState>();
+            MultiTimeframeAtrState[securityId] = new ConcurrentDictionary<TimeSpan, AtrState>();
+            MultiTimeframeObvState[securityId] = new ConcurrentDictionary<TimeSpan, ObvState>();
             IsInVolatilitySqueeze[securityId] = false;
 
             if (instrumentType == "INDEX")
@@ -96,11 +93,8 @@ namespace TradingConsole.Wpf.Services.Analysis
 
         public AnalysisResult GetResult(string securityId)
         {
-            if (!AnalysisResults.ContainsKey(securityId))
-            {
-                AnalysisResults[securityId] = new AnalysisResult { SecurityId = securityId };
-            }
-            return AnalysisResults[securityId];
+            // ConcurrentDictionary's GetOrAdd is a thread-safe way to get an existing item or create it if it doesn't exist.
+            return AnalysisResults.GetOrAdd(securityId, new AnalysisResult { SecurityId = securityId });
         }
     }
 }

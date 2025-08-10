@@ -1,6 +1,6 @@
 ﻿// TradingConsole.Wpf/Services/Analysis/IndicatorService.cs
-// --- MODIFIED: Added RSI and OBV Divergence detection logic ---
 using System;
+using System.Collections.Concurrent; // MODIFIED: Added this namespace
 using System.Collections.Generic;
 using System.Linq;
 using TradingConsole.Core.Models;
@@ -114,9 +114,6 @@ namespace TradingConsole.Wpf.Services
             return "No Divergence";
         }
 
-        /// <summary>
-        /// --- NEW: Detects bullish or bearish divergence between price and OBV ---
-        /// </summary>
         public string DetectObvDivergence(List<Candle> candles, ObvState state, int lookbackPeriod)
         {
             if (candles.Count < lookbackPeriod || state.ObvValues.Count < lookbackPeriod)
@@ -235,7 +232,8 @@ namespace TradingConsole.Wpf.Services
             return state.CurrentObv;
         }
 
-        public string CalculateEmaSignal(string securityId, List<Candle> candles, Dictionary<string, Dictionary<TimeSpan, EmaState>> stateDictionary, int shortEma, int longEma, bool useVwap)
+        // --- MODIFIED: The method signature is updated to accept ConcurrentDictionary ---
+        public string CalculateEmaSignal(string securityId, List<Candle> candles, ConcurrentDictionary<string, ConcurrentDictionary<TimeSpan, EmaState>> stateDictionary, int shortEma, int longEma, bool useVwap)
         {
             if (candles.Count < 2) return "Building History...";
 

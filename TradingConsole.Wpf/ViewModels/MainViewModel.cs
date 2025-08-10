@@ -63,12 +63,10 @@ namespace TradingConsole.Wpf.ViewModels
         private Dictionary<string, DashboardInstrument> _dashboardInstrumentMap = new();
         private Dictionary<string, Position> _openPositionsMap = new();
 
-        // --- FIX: Replaced the UI update timer with a new 20ms processing timer ---
-        private readonly Timer _processingTimer;
-        private readonly ConcurrentDictionary<string, TickerPacket> _pendingTickerUpdates = new();
-        private readonly ConcurrentDictionary<string, QuotePacket> _pendingQuoteUpdates = new();
-        private readonly ConcurrentDictionary<string, OiPacket> _pendingOiUpdates = new();
-        private readonly ConcurrentDictionary<string, PreviousClosePacket> _pendingPreviousCloseUpdates = new();
+        // --- NEW: Producer-Consumer Queue Implementation ---
+        private readonly BlockingCollection<object> _dataProcessingQueue = new BlockingCollection<object>();
+        private readonly Task _dataProcessingTask;
+        private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
 
         private bool _isKillSwitchActive;
         public bool IsKillSwitchActive
@@ -243,8 +241,8 @@ namespace TradingConsole.Wpf.ViewModels
             RemoveInstrumentCommand = new RelayCommand(async p => await ExecuteRemoveInstrumentAsync(p));
             ShowMtmGraphCommand = new RelayCommand(ExecuteShowMtmGraph);
 
-            // --- FIX: Initialize the new processing timer ---
-            _processingTimer = new Timer(ProcessPendingUpdates, null, Timeout.Infinite, Timeout.Infinite);
+            // --- NEW: Start the dedicated consumer task ---
+            _dataProcessingTask = Task.Run(ProcessDataQueueAsync, _cancellationTokenSource.Token);
 
             _ = LoadDataOnStartupAsync();
         }
@@ -259,7 +257,6 @@ namespace TradingConsole.Wpf.ViewModels
             {
                 if (_dashboardInstrumentMap.TryGetValue(result.SecurityId, out var instrumentToUpdate))
                 {
-                    // This is where all UI-bound properties get their final values.
                     instrumentToUpdate.TradingSignal = result.FinalTradeSignal;
                     instrumentToUpdate.LTP = result.LTP;
                     instrumentToUpdate.Change = result.PriceChange;
@@ -734,9 +731,6 @@ namespace TradingConsole.Wpf.ViewModels
                 _optionChainRefreshTimer = new Timer(async _ => await RefreshOptionChainDataAsync(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(15));
                 _ivRefreshTimer = new Timer(async _ => await LoadInitialOptionChainsAsync(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
 
-                // --- FIX: Start the new processing timer with a 20ms interval ---
-                _processingTimer.Change(TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(20));
-
                 Application.Current.Dispatcher.InvokeAsync(() => { SelectedIndex = Indices.FirstOrDefault(i => i.Name == "Nifty 50"); });
             }
             catch (DhanApiException ex)
@@ -926,37 +920,11 @@ namespace TradingConsole.Wpf.ViewModels
             };
         }
 
-        private void OnLtpUpdateReceived(TickerPacket packet)
-        {
-            if (packet?.SecurityId != null)
-            {
-                _pendingTickerUpdates[packet.SecurityId] = packet;
-            }
-        }
-
-        private void OnPreviousCloseUpdateReceived(PreviousClosePacket packet)
-        {
-            if (packet?.SecurityId != null)
-            {
-                _pendingPreviousCloseUpdates[packet.SecurityId] = packet;
-            }
-        }
-
-        private void OnQuoteUpdateReceived(QuotePacket packet)
-        {
-            if (packet?.SecurityId != null)
-            {
-                _pendingQuoteUpdates[packet.SecurityId] = packet;
-            }
-        }
-
-        private void OnOiUpdateReceived(OiPacket packet)
-        {
-            if (packet?.SecurityId != null)
-            {
-                _pendingOiUpdates[packet.SecurityId] = packet;
-            }
-        }
+        // --- MODIFIED: WebSocket handlers are now lightweight "producers" ---
+        private void OnLtpUpdateReceived(TickerPacket packet) => _dataProcessingQueue.Add(packet);
+        private void OnPreviousCloseUpdateReceived(PreviousClosePacket packet) => _dataProcessingQueue.Add(packet);
+        private void OnQuoteUpdateReceived(QuotePacket packet) => _dataProcessingQueue.Add(packet);
+        private void OnOiUpdateReceived(OiPacket packet) => _dataProcessingQueue.Add(packet);
 
         private void OnOrderUpdateReceived(OrderBookEntry updatedOrder)
         {
@@ -985,89 +953,95 @@ namespace TradingConsole.Wpf.ViewModels
             });
         }
 
-        private void ProcessPendingUpdates(object? state)
+        // --- NEW: The dedicated "consumer" task for processing data ---
+        private async Task ProcessDataQueueAsync()
         {
-            // Drain all dictionaries to capture the latest data from the 20ms window.
-            var tickerUpdates = new Dictionary<string, TickerPacket>(_pendingTickerUpdates);
-            _pendingTickerUpdates.Clear();
-            var quoteUpdates = new Dictionary<string, QuotePacket>(_pendingQuoteUpdates);
-            _pendingQuoteUpdates.Clear();
-            var oiUpdates = new Dictionary<string, OiPacket>(_pendingOiUpdates);
-            _pendingOiUpdates.Clear();
-            var prevCloseUpdates = new Dictionary<string, PreviousClosePacket>(_pendingPreviousCloseUpdates);
-            _pendingPreviousCloseUpdates.Clear();
-
-            // Get a unique list of all security IDs that received any update in this batch.
-            var allUpdatedSecurityIds = tickerUpdates.Keys
-                .Union(quoteUpdates.Keys)
-                .Union(oiUpdates.Keys)
-                .Union(prevCloseUpdates.Keys)
-                .Distinct()
-                .ToList();
-
-            if (!allUpdatedSecurityIds.Any()) return;
-
-            // Process each updated instrument in a synchronized manner.
-            foreach (var securityId in allUpdatedSecurityIds)
+            foreach (var dataItem in _dataProcessingQueue.GetConsumingEnumerable(_cancellationTokenSource.Token))
             {
-                if (_dashboardInstrumentMap.TryGetValue(securityId, out var instrumentToUpdate))
+                try
                 {
-                    // Apply all updates for this instrument from the captured batch.
-                    if (tickerUpdates.TryGetValue(securityId, out var ticker))
+                    DashboardInstrument? instrumentToUpdate = null;
+                    string? securityId = null;
+
+                    // Update the correct instrument based on the packet type
+                    switch (dataItem)
                     {
-                        instrumentToUpdate.LTP = ticker.LastPrice;
-                    }
-                    if (quoteUpdates.TryGetValue(securityId, out var quote))
-                    {
-                        instrumentToUpdate.LTP = quote.LastPrice;
-                        instrumentToUpdate.Open = quote.Open;
-                        instrumentToUpdate.High = quote.High;
-                        instrumentToUpdate.Low = quote.Low;
-                        instrumentToUpdate.Close = quote.Close;
-                        instrumentToUpdate.Volume = quote.Volume;
-                        instrumentToUpdate.LastTradedQuantity = quote.LastTradeQuantity;
-                        instrumentToUpdate.LastTradeTime = quote.LastTradeTime;
-                        instrumentToUpdate.AvgTradePrice = quote.AvgTradePrice;
-                    }
-                    if (oiUpdates.TryGetValue(securityId, out var oi))
-                    {
-                        instrumentToUpdate.OpenInterest = oi.OpenInterest;
-                    }
-                    if (prevCloseUpdates.TryGetValue(securityId, out var prevClose))
-                    {
-                        instrumentToUpdate.Close = prevClose.PreviousClose;
+                        case TickerPacket ticker:
+                            securityId = ticker.SecurityId;
+                            if (securityId != null && _dashboardInstrumentMap.TryGetValue(securityId, out instrumentToUpdate))
+                            {
+                                instrumentToUpdate.LTP = ticker.LastPrice;
+                            }
+                            break;
+                        case QuotePacket quote:
+                            securityId = quote.SecurityId;
+                            if (securityId != null && _dashboardInstrumentMap.TryGetValue(securityId, out instrumentToUpdate))
+                            {
+                                instrumentToUpdate.LTP = quote.LastPrice;
+                                instrumentToUpdate.Open = quote.Open;
+                                instrumentToUpdate.High = quote.High;
+                                instrumentToUpdate.Low = quote.Low;
+                                instrumentToUpdate.Close = quote.Close;
+                                instrumentToUpdate.Volume = quote.Volume;
+                                instrumentToUpdate.LastTradedQuantity = quote.LastTradeQuantity;
+                                instrumentToUpdate.LastTradeTime = quote.LastTradeTime;
+                                instrumentToUpdate.AvgTradePrice = quote.AvgTradePrice;
+                            }
+                            break;
+                        case OiPacket oi:
+                            securityId = oi.SecurityId;
+                            if (securityId != null && _dashboardInstrumentMap.TryGetValue(securityId, out instrumentToUpdate))
+                            {
+                                instrumentToUpdate.OpenInterest = oi.OpenInterest;
+                            }
+                            break;
+                        case PreviousClosePacket prevClose:
+                            securityId = prevClose.SecurityId;
+                            if (securityId != null && _dashboardInstrumentMap.TryGetValue(securityId, out instrumentToUpdate))
+                            {
+                                instrumentToUpdate.Close = prevClose.PreviousClose;
+                            }
+                            break;
                     }
 
-                    // Update option chain and position data directly for UI responsiveness.
-                    if (SelectedIndex != null && securityId == SelectedIndex.ScripId)
+                    if (instrumentToUpdate != null)
                     {
-                        Application.Current.Dispatcher.InvokeAsync(() => {
-                            UnderlyingPrice = instrumentToUpdate.LTP;
-                            UnderlyingPreviousClose = instrumentToUpdate.Close;
-                        });
-                    }
-                    if (_optionScripMap.TryGetValue(securityId, out var optionDetails))
-                    {
-                        optionDetails.LTP = instrumentToUpdate.LTP;
-                        optionDetails.Volume = instrumentToUpdate.Volume;
-                        optionDetails.OI = instrumentToUpdate.OpenInterest;
-                    }
-                    if (_openPositionsMap.TryGetValue(securityId, out var openPositionToUpdate))
-                    {
-                        openPositionToUpdate.LastTradedPrice = instrumentToUpdate.LTP;
-                    }
-                    if (instrumentToUpdate.InstrumentType == "INDEX" && !_dashboardOptionsLoadedFor.Contains(securityId))
-                    {
-                        _dashboardOptionsLoadedFor.Add(securityId);
-                        _ = LoadDashboardOptionsForIndexAsync(instrumentToUpdate, instrumentToUpdate.LTP);
-                    }
+                        // Update related UI elements that need live data
+                        if (SelectedIndex != null && securityId == SelectedIndex.ScripId)
+                        {
+                            await Application.Current.Dispatcher.InvokeAsync(() => {
+                                UnderlyingPrice = instrumentToUpdate.LTP;
+                                UnderlyingPreviousClose = instrumentToUpdate.Close;
+                            });
+                        }
+                        if (_optionScripMap.TryGetValue(securityId, out var optionDetails))
+                        {
+                            optionDetails.LTP = instrumentToUpdate.LTP;
+                            optionDetails.Volume = instrumentToUpdate.Volume;
+                            optionDetails.OI = instrumentToUpdate.OpenInterest;
+                        }
+                        if (_openPositionsMap.TryGetValue(securityId, out var openPositionToUpdate))
+                        {
+                            openPositionToUpdate.LastTradedPrice = instrumentToUpdate.LTP;
+                        }
+                        if (instrumentToUpdate.InstrumentType == "INDEX" && !_dashboardOptionsLoadedFor.Contains(securityId))
+                        {
+                            _dashboardOptionsLoadedFor.Add(securityId);
+                            _ = LoadDashboardOptionsForIndexAsync(instrumentToUpdate, instrumentToUpdate.LTP);
+                        }
 
-                    // Hand off the fully updated instrument state to the Analysis Service.
-                    decimal underlyingLtp = FindUnderlyingInstrument(instrumentToUpdate)?.LTP ?? instrumentToUpdate.LTP;
-                    _analysisService.OnInstrumentDataReceived(instrumentToUpdate, underlyingLtp);
+                        // Finally, hand off the fully updated instrument to the Analysis Service
+                        decimal underlyingLtp = FindUnderlyingInstrument(instrumentToUpdate)?.LTP ?? instrumentToUpdate.LTP;
+                        _analysisService.OnInstrumentDataReceived(instrumentToUpdate, underlyingLtp);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[DataProcessingQueue] Error: {ex.Message}");
                 }
             }
         }
+
 
         public async Task LoadPortfolioAsync()
         {
@@ -1546,7 +1520,6 @@ namespace TradingConsole.Wpf.ViewModels
                                     rowToUpdate.CallOption.Volume = strikeData.CallOption.Volume;
                                     rowToUpdate.CallOption.IV = strikeData.CallOption.ImpliedVolatility;
                                     rowToUpdate.CallOption.Delta = strikeData.CallOption.Greeks?.Delta ?? 0;
-                                    // --- ADDED: Update new greeks on refresh ---
                                     rowToUpdate.CallOption.Gamma = strikeData.CallOption.Greeks?.Gamma ?? 0;
                                     rowToUpdate.CallOption.Theta = strikeData.CallOption.Greeks?.Theta ?? 0;
                                     rowToUpdate.CallOption.Vega = strikeData.CallOption.Greeks?.Vega ?? 0;
@@ -1560,7 +1533,6 @@ namespace TradingConsole.Wpf.ViewModels
                                     rowToUpdate.PutOption.Volume = strikeData.PutOption.Volume;
                                     rowToUpdate.PutOption.IV = strikeData.PutOption.ImpliedVolatility;
                                     rowToUpdate.PutOption.Delta = strikeData.PutOption.Greeks?.Delta ?? 0;
-                                    // --- ADDED: Update new greeks on refresh ---
                                     rowToUpdate.PutOption.Gamma = strikeData.PutOption.Greeks?.Gamma ?? 0;
                                     rowToUpdate.PutOption.Theta = strikeData.PutOption.Greeks?.Theta ?? 0;
                                     rowToUpdate.PutOption.Vega = strikeData.PutOption.Greeks?.Vega ?? 0;
@@ -1627,7 +1599,6 @@ namespace TradingConsole.Wpf.ViewModels
                 OiChangePercent = apiData.OiChangePercent,
                 Volume = apiData.Volume,
                 Delta = apiData.Greeks?.Delta ?? 0,
-                // --- ADDED: Map the new greeks from the API response to the core model ---
                 Gamma = apiData.Greeks?.Gamma ?? 0,
                 Theta = apiData.Greeks?.Theta ?? 0,
                 Vega = apiData.Greeks?.Vega ?? 0
@@ -1709,12 +1680,20 @@ namespace TradingConsole.Wpf.ViewModels
         }
         public void Dispose()
         {
+            _cancellationTokenSource.Cancel();
+            _dataProcessingQueue.CompleteAdding();
+            try
+            {
+                _dataProcessingTask.Wait();
+            }
+            catch (OperationCanceledException) { }
+
             _webSocketClient?.Dispose();
             _optionChainRefreshTimer?.Dispose();
             _ivRefreshTimer?.Dispose();
             _optionChainLoadSemaphore?.Dispose();
             _ivCacheSemaphore?.Dispose();
-            _processingTimer?.Dispose();
+            _cancellationTokenSource?.Dispose();
 
             _performanceService?.Cleanup();
 
