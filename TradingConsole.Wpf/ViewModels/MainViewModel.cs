@@ -1686,7 +1686,14 @@ namespace TradingConsole.Wpf.ViewModels
             {
                 _dataProcessingTask.Wait();
             }
-            catch (OperationCanceledException) { }
+            catch (AggregateException ae)
+            {
+                ae.Handle(ex => ex is OperationCanceledException);
+            }
+            catch (OperationCanceledException)
+            {
+                // Also catch the unwrapped exception for completeness.
+            }
 
             _webSocketClient?.Dispose();
             _optionChainRefreshTimer?.Dispose();
@@ -1701,7 +1708,14 @@ namespace TradingConsole.Wpf.ViewModels
             if (Portfolio != null) Portfolio.PropertyChanged -= Portfolio_PropertyChanged;
 
             _historicalIvService?.SaveDatabase();
+
+            // --- THE FIX ---
+            // 1. First, call the new method to stage today's live profile data for saving.
+            _analysisService?.SaveLiveMarketProfiles();
+
+            // 2. Then, call the existing method to save the now-complete database to the file.
             _analysisService?.SaveMarketProfileDatabase();
+
             _analysisService?.SaveIndicatorStates();
         }
         #endregion

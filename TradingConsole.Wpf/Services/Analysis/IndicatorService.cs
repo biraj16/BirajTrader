@@ -244,7 +244,19 @@ namespace TradingConsole.Wpf.Services
 
             if (state.CurrentShortEma == 0 || state.CurrentLongEma == 0)
             {
-                return "Warming Up...";
+                // Check if we now have enough data to initialize
+                if (candles.Count >= longEma)
+                {
+                    // Perform the full, accurate warm-up calculation now
+                    var prices = candles.Select(c => useVwap ? c.Vwap : c.Close).ToList();
+                    state.CurrentShortEma = CalculateFullEma(prices, shortEma);
+                    state.CurrentLongEma = CalculateFullEma(prices, longEma);
+                }
+                else
+                {
+                    // Not enough data yet, so keep warming up
+                    return "Warming Up...";
+                }
             }
 
             decimal shortMultiplier = 2.0m / (shortEma + 1);

@@ -366,10 +366,11 @@ namespace TradingConsole.Wpf.Services
                     }
                 }
             }
-            else if (instrument.InstrumentType != "INDEX")
+            else // Handles INDEX instruments and any others not covered above
             {
                 if (_stateManager.MarketProfiles.TryGetValue(instrument.SecurityId, out var otherProfile))
                 {
+                    // For an INDEX instrument, this correctly creates a TPO-only profile
                     _signalGenerationService.UpdateMarketProfile(otherProfile, lastClosedCandle, lastClosedCandle);
                 }
             }
@@ -392,6 +393,21 @@ namespace TradingConsole.Wpf.Services
                 indexResult.OiSignal = futureResult.OiSignal;
                 indexResult.IntradayIvSpikeSignal = futureResult.IntradayIvSpikeSignal;
                 indexResult.CandleSignal5Min = futureResult.CandleSignal5Min;
+            }
+        }
+        public void SaveLiveMarketProfiles()
+        {
+            // Iterate through all the live market profiles that were built during the day.
+            foreach (var profileEntry in _stateManager.MarketProfiles)
+            {
+                var securityId = profileEntry.Key;
+                var liveProfile = profileEntry.Value;
+
+                // Convert the live, in-memory profile into a storable data format.
+                var profileDataToSave = liveProfile.ToMarketProfileData();
+
+                // Update the MarketProfileService with today's data.
+                _marketProfileService.UpdateProfile(securityId, profileDataToSave);
             }
         }
 
