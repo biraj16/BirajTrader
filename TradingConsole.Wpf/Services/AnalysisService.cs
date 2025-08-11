@@ -1,5 +1,4 @@
 ﻿// TradingConsole.Wpf/Services/AnalysisService.cs
-// --- MODIFIED: Correctly passed the IndicatorService dependency ---
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -15,7 +14,6 @@ using TradingConsole.Wpf.ViewModels;
 
 namespace TradingConsole.Wpf.Services
 {
-    // --- MODIFIED: Added Bullish_Breakout_Attempt and Bearish_Breakdown_Attempt ---
     public enum MarketThesis { Bullish_Trend, Bullish_Rotation, Bullish_Reversal_Attempt, Bullish_Breakout_Attempt, Bearish_Trend, Bearish_Rotation, Bearish_Reversal_Attempt, Bearish_Breakdown_Attempt, Balancing, Indeterminate, Choppy }
     public enum DominantPlayer { Buyers, Sellers, Balance, Indeterminate }
 
@@ -164,7 +162,6 @@ namespace TradingConsole.Wpf.Services
             {
                 decimal tickSize = _signalGenerationService.GetTickSize(instrument);
 
-                // --- FIX: Correctly create an Unspecified DateTime and convert it from IST to UTC ---
                 var istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
                 var sessionStartLocal = DateTime.Today.Add(new TimeSpan(9, 15, 0));
                 var sessionStartUnspecified = DateTime.SpecifyKind(sessionStartLocal, DateTimeKind.Unspecified);
@@ -183,7 +180,8 @@ namespace TradingConsole.Wpf.Services
 
         public void SaveIndicatorStates()
         {
-            var timeframes = new[] { TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(15) };
+            // --- THE FIX: Ensure all processed timeframes are saved ---
+            var timeframes = new[] { TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(3), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(15) };
             foreach (var securityId in _stateManager.MultiTimeframePriceEmaState.Keys)
             {
                 foreach (var timeframe in timeframes)
@@ -298,7 +296,6 @@ namespace TradingConsole.Wpf.Services
 
                 decimal tickSize = _signalGenerationService.GetTickSize(instrument);
 
-                // --- FIX: Ensure the historical session start time is also UTC for consistency ---
                 var istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
                 var sessionStartLocal = dateToFetch.Date.Add(new TimeSpan(9, 15, 0));
                 var sessionStartUnspecified = DateTime.SpecifyKind(sessionStartLocal, DateTimeKind.Unspecified);
@@ -370,7 +367,6 @@ namespace TradingConsole.Wpf.Services
             {
                 if (_stateManager.MarketProfiles.TryGetValue(instrument.SecurityId, out var otherProfile))
                 {
-                    // For an INDEX instrument, this correctly creates a TPO-only profile
                     _signalGenerationService.UpdateMarketProfile(otherProfile, lastClosedCandle, lastClosedCandle);
                 }
             }
@@ -397,16 +393,13 @@ namespace TradingConsole.Wpf.Services
         }
         public void SaveLiveMarketProfiles()
         {
-            // Iterate through all the live market profiles that were built during the day.
             foreach (var profileEntry in _stateManager.MarketProfiles)
             {
                 var securityId = profileEntry.Key;
                 var liveProfile = profileEntry.Value;
 
-                // Convert the live, in-memory profile into a storable data format.
                 var profileDataToSave = liveProfile.ToMarketProfileData();
 
-                // Update the MarketProfileService with today's data.
                 _marketProfileService.UpdateProfile(securityId, profileDataToSave);
             }
         }

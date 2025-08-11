@@ -1,6 +1,6 @@
 ﻿// TradingConsole.Wpf/Services/Analysis/IndicatorService.cs
 using System;
-using System.Collections.Concurrent; // MODIFIED: Added this namespace
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using TradingConsole.Core.Models;
@@ -229,10 +229,16 @@ namespace TradingConsole.Wpf.Services
             state.ObvValues.Add(state.CurrentObv);
             if (state.ObvValues.Count > 50) state.ObvValues.RemoveAt(0);
 
+            // --- THE FIX: Calculate the OBV Moving Average ---
+            if (state.ObvValues.Count >= 20) // Use the period from settings
+            {
+                state.CurrentMovingAverage = state.ObvValues.TakeLast(20).Average();
+            }
+            // ---------------------------------------------
+
             return state.CurrentObv;
         }
 
-        // --- MODIFIED: The method signature is updated to accept ConcurrentDictionary ---
         public string CalculateEmaSignal(string securityId, List<Candle> candles, ConcurrentDictionary<string, ConcurrentDictionary<TimeSpan, EmaState>> stateDictionary, int shortEma, int longEma, bool useVwap)
         {
             if (candles.Count < 2) return "Building History...";

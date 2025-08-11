@@ -1669,6 +1669,15 @@ namespace TradingConsole.Wpf.ViewModels
                 return potentialUnderlyingSymbol == derivativeUnderlying;
             });
         }
+        public bool TryGetNearestExpiry(string symbol, out DateTime expiryDate)
+        {
+            expiryDate = default;
+            if (_nearestExpiryDates.TryGetValue(symbol, out var expiryDateString))
+            {
+                return DateTime.TryParse(expiryDateString, out expiryDate);
+            }
+            return false;
+        }
         #endregion
 
         #region Boilerplate

@@ -1,4 +1,6 @@
-﻿using System;
+﻿// TradingConsole.Wpf/Services/AutoTraderService.cs
+
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 using TradingConsole.Core.Models;
@@ -44,8 +46,8 @@ namespace TradingConsole.Wpf.Services
 
             // Safety Checks: Ensure automation is enabled and conditions are met.
             if (!settings.IsAutomationEnabled ||
-                result.Symbol != settings.SelectedAutoTradeIndex || // <-- ADDED: Check if the signal is for the selected index.
-                result.InstrumentGroup != "Indices" ||
+                result.Symbol != settings.SelectedAutoTradeIndex ||
+                result.InstrumentGroup != "INDEX" ||
                 _mainViewModel.IsKillSwitchActive ||
                 _activeTradeInstrument != null) // Do not take a new trade if one is already active.
             {
@@ -80,14 +82,21 @@ namespace TradingConsole.Wpf.Services
                 var underlyingInstrument = _mainViewModel.Dashboard.MonitoredInstruments.FirstOrDefault(i => i.DisplayName == result.Symbol);
                 if (underlyingInstrument == null) throw new InvalidOperationException("Could not find underlying instrument in dashboard.");
 
-                // 2. Determine the ATM strike price.
+                // --- THE FIX ---
+                // 2. Programmatically determine the nearest expiry date instead of relying on UI.
+                if (!_mainViewModel.TryGetNearestExpiry(underlyingInstrument.Symbol, out var expiryDate))
+                {
+                    throw new InvalidOperationException($"Could not determine nearest expiry for {underlyingInstrument.Symbol}.");
+                }
+
+                // 3. Determine the ATM strike price.
                 int strikeStep = GetStrikePriceStep(underlyingInstrument.Symbol);
                 decimal atmStrike = Math.Round(underlyingInstrument.LTP / strikeStep) * strikeStep;
 
-                // 3. Find the correct option contract.
+                // 4. Find the correct option contract.
                 var optionScrip = _scripMasterService.FindOptionScripInfo(
                     underlyingInstrument.UnderlyingSymbol,
-                    DateTime.Parse(_mainViewModel.SelectedExpiry!),
+                    expiryDate,
                     atmStrike,
                     isBuy ? "CE" : "PE");
 
@@ -96,12 +105,12 @@ namespace TradingConsole.Wpf.Services
                     throw new InvalidOperationException($"Could not find ATM {(isBuy ? "Call" : "Put")} option for strike {atmStrike}.");
                 }
 
-                // 4. Get the live price of the option to calculate SL/Target.
+                // 5. Get the live price of the option to calculate SL/Target.
                 var optionQuote = await _apiClient.GetQuoteAsync(optionScrip.SecurityId);
                 if (optionQuote == null) throw new InvalidOperationException("Could not fetch live quote for the selected option.");
                 decimal optionLtp = optionQuote.Ltp;
 
-                // 5. Construct the Bracket Order (SuperOrder).
+                // 6. Construct the Bracket Order (SuperOrder).
                 var orderRequest = new SuperOrderRequest
                 {
                     DhanClientId = _mainViewModel.DhanClientId,
@@ -124,7 +133,7 @@ namespace TradingConsole.Wpf.Services
 
                 await _mainViewModel.UpdateStatusAsync($"[AutoTrader] Placing Bracket Order for {optionScrip.SemInstrumentName} at Market...");
 
-                // 6. Place the order.
+                // 7. Place the order.
                 var response = await _apiClient.PlaceSuperOrderAsync(orderRequest);
 
                 if (response?.OrderId != null)
