@@ -52,6 +52,7 @@ namespace TradingConsole.Wpf.ViewModels
         private readonly string _dhanClientId;
         private Timer? _optionChainRefreshTimer;
         private Timer? _ivRefreshTimer;
+        private Timer? _portfolioRefreshTimer;
         private readonly Dictionary<string, OptionDetails> _optionScripMap = new();
         private readonly HashSet<string> _dashboardOptionsLoadedFor = new();
         private readonly Dictionary<string, string> _nearestExpiryDates = new();
@@ -63,7 +64,6 @@ namespace TradingConsole.Wpf.ViewModels
         private Dictionary<string, DashboardInstrument> _dashboardInstrumentMap = new();
         private Dictionary<string, Position> _openPositionsMap = new();
 
-        // --- NEW: Producer-Consumer Queue Implementation ---
         private readonly BlockingCollection<object> _dataProcessingQueue = new BlockingCollection<object>();
         private readonly Task _dataProcessingTask;
         private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
@@ -241,7 +241,6 @@ namespace TradingConsole.Wpf.ViewModels
             RemoveInstrumentCommand = new RelayCommand(async p => await ExecuteRemoveInstrumentAsync(p));
             ShowMtmGraphCommand = new RelayCommand(ExecuteShowMtmGraph);
 
-            // --- NEW: Start the dedicated consumer task ---
             _dataProcessingTask = Task.Run(ProcessDataQueueAsync, _cancellationTokenSource.Token);
 
             _ = LoadDataOnStartupAsync();
@@ -731,6 +730,10 @@ namespace TradingConsole.Wpf.ViewModels
                 _optionChainRefreshTimer = new Timer(async _ => await RefreshOptionChainDataAsync(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(15));
                 _ivRefreshTimer = new Timer(async _ => await LoadInitialOptionChainsAsync(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
 
+                var refreshInterval = TimeSpan.FromSeconds(1);
+                _portfolioRefreshTimer = new Timer(async _ => await LoadPortfolioAsync(isPeriodicRefresh: true), null, refreshInterval, refreshInterval);
+
+
                 Application.Current.Dispatcher.InvokeAsync(() => { SelectedIndex = Indices.FirstOrDefault(i => i.Name == "Nifty 50"); });
             }
             catch (DhanApiException ex)
@@ -920,7 +923,6 @@ namespace TradingConsole.Wpf.ViewModels
             };
         }
 
-        // --- MODIFIED: WebSocket handlers are now lightweight "producers" ---
         private void OnLtpUpdateReceived(TickerPacket packet) => _dataProcessingQueue.Add(packet);
         private void OnPreviousCloseUpdateReceived(PreviousClosePacket packet) => _dataProcessingQueue.Add(packet);
         private void OnQuoteUpdateReceived(QuotePacket packet) => _dataProcessingQueue.Add(packet);
@@ -953,7 +955,6 @@ namespace TradingConsole.Wpf.ViewModels
             });
         }
 
-        // --- NEW: The dedicated "consumer" task for processing data ---
         private async Task ProcessDataQueueAsync()
         {
             foreach (var dataItem in _dataProcessingQueue.GetConsumingEnumerable(_cancellationTokenSource.Token))
@@ -963,7 +964,6 @@ namespace TradingConsole.Wpf.ViewModels
                     DashboardInstrument? instrumentToUpdate = null;
                     string? securityId = null;
 
-                    // Update the correct instrument based on the packet type
                     switch (dataItem)
                     {
                         case TickerPacket ticker:
@@ -1006,7 +1006,6 @@ namespace TradingConsole.Wpf.ViewModels
 
                     if (instrumentToUpdate != null)
                     {
-                        // Update related UI elements that need live data
                         if (SelectedIndex != null && securityId == SelectedIndex.ScripId)
                         {
                             await Application.Current.Dispatcher.InvokeAsync(() => {
@@ -1030,7 +1029,6 @@ namespace TradingConsole.Wpf.ViewModels
                             _ = LoadDashboardOptionsForIndexAsync(instrumentToUpdate, instrumentToUpdate.LTP);
                         }
 
-                        // Finally, hand off the fully updated instrument to the Analysis Service
                         decimal underlyingLtp = FindUnderlyingInstrument(instrumentToUpdate)?.LTP ?? instrumentToUpdate.LTP;
                         _analysisService.OnInstrumentDataReceived(instrumentToUpdate, underlyingLtp);
                     }
@@ -1043,8 +1041,13 @@ namespace TradingConsole.Wpf.ViewModels
         }
 
 
-        public async Task LoadPortfolioAsync()
+        public async Task LoadPortfolioAsync(bool isPeriodicRefresh = false)
         {
+            if (isPeriodicRefresh && !_analysisService.IsMarketOpen())
+            {
+                return;
+            }
+
             await UpdateStatusAsync("Fetching portfolio...");
             try
             {
@@ -1669,6 +1672,9 @@ namespace TradingConsole.Wpf.ViewModels
                 return potentialUnderlyingSymbol == derivativeUnderlying;
             });
         }
+        #endregion
+
+        #region Boilerplate
         public bool TryGetNearestExpiry(string symbol, out DateTime expiryDate)
         {
             expiryDate = default;
@@ -1678,9 +1684,6 @@ namespace TradingConsole.Wpf.ViewModels
             }
             return false;
         }
-        #endregion
-
-        #region Boilerplate
 
         public event PropertyChangedEventHandler? PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
@@ -1707,6 +1710,7 @@ namespace TradingConsole.Wpf.ViewModels
             _webSocketClient?.Dispose();
             _optionChainRefreshTimer?.Dispose();
             _ivRefreshTimer?.Dispose();
+            _portfolioRefreshTimer?.Dispose();
             _optionChainLoadSemaphore?.Dispose();
             _ivCacheSemaphore?.Dispose();
             _cancellationTokenSource?.Dispose();
@@ -1718,11 +1722,7 @@ namespace TradingConsole.Wpf.ViewModels
 
             _historicalIvService?.SaveDatabase();
 
-            // --- THE FIX ---
-            // 1. First, call the new method to stage today's live profile data for saving.
             _analysisService?.SaveLiveMarketProfiles();
-
-            // 2. Then, call the existing method to save the now-complete database to the file.
             _analysisService?.SaveMarketProfileDatabase();
 
             _analysisService?.SaveIndicatorStates();

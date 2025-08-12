@@ -152,7 +152,7 @@ namespace TradingConsole.Wpf.Services
         }
 
         #region Boilerplate and other methods
-        private bool IsMarketOpen() { try { var istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"); var istNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, istZone); if (istNow.DayOfWeek == DayOfWeek.Saturday || istNow.DayOfWeek == DayOfWeek.Sunday) return false; if (_settingsViewModel.MarketHolidays.Contains(istNow.Date)) return false; var marketOpen = new TimeSpan(9, 15, 0); var marketClose = new TimeSpan(15, 30, 0); if (istNow.TimeOfDay < marketOpen || istNow.TimeOfDay > marketClose) return false; return true; } catch (TimeZoneNotFoundException) { Debug.WriteLine("WARNING: India Standard Time zone not found."); var now = DateTime.UtcNow; if (now.DayOfWeek == DayOfWeek.Saturday || now.DayOfWeek == DayOfWeek.Sunday) return false; return true; } }
+        public bool IsMarketOpen() { try { var istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"); var istNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, istZone); if (istNow.DayOfWeek == DayOfWeek.Saturday || istNow.DayOfWeek == DayOfWeek.Sunday) return false; if (_settingsViewModel.MarketHolidays.Contains(istNow.Date)) return false; var marketOpen = new TimeSpan(9, 15, 0); var marketClose = new TimeSpan(15, 30, 0); if (istNow.TimeOfDay < marketOpen || istNow.TimeOfDay > marketClose) return false; return true; } catch (TimeZoneNotFoundException) { Debug.WriteLine("WARNING: India Standard Time zone not found."); var now = DateTime.UtcNow; if (now.DayOfWeek == DayOfWeek.Saturday || now.DayOfWeek == DayOfWeek.Sunday) return false; return true; } }
 
         private void InitializeNewInstrument(DashboardInstrument instrument)
         {
