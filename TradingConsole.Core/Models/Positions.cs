@@ -4,7 +4,6 @@ using System.Runtime.CompilerServices;
 
 namespace TradingConsole.Core.Models
 {
-    // --- REFACTORED: This class now inherits from ObservableModel to remove redundant code.
     public class Position : ObservableModel
     {
         private bool _isSelected;
@@ -25,7 +24,6 @@ namespace TradingConsole.Core.Models
         public decimal LastTradedPrice
         {
             get => _lastTradedPrice;
-            // --- REFACTORED: Uses the SetProperty helper from the base class.
             set { if (SetProperty(ref _lastTradedPrice, value)) { OnPropertyChanged(nameof(UnrealizedPnl)); } }
         }
 
@@ -33,6 +31,12 @@ namespace TradingConsole.Core.Models
         {
             get
             {
+                // --- THE FIX: Add a guard clause to prevent calculation with a zero LTP ---
+                if (LastTradedPrice == 0)
+                {
+                    return 0; // Return zero until the first valid tick arrives
+                }
+
                 if (Quantity > 0) // Long position
                 {
                     return Quantity * (LastTradedPrice - AveragePrice);
@@ -47,8 +51,5 @@ namespace TradingConsole.Core.Models
                 }
             }
         }
-
-        // --- REFACTORED: The PropertyChanged event and OnPropertyChanged method are now inherited
-        // from ObservableModel and have been removed from this class.
     }
 }
